@@ -348,9 +348,26 @@ export default function StatementScreen() {
       setUploading(true);
       let fileBase64 = "";
       if (Platform.OS === "web") {
-        const response = await fetch(asset.uri);
-        const buffer = await response.arrayBuffer();
-        fileBase64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        const fileObj = (asset as any).file as File | undefined;
+        if (fileObj) {
+          fileBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(",")[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(fileObj);
+          });
+        } else {
+          const response = await fetch(asset.uri);
+          const buffer = await response.arrayBuffer();
+          // Converter em chunks para não estourar o call stack em arquivos grandes
+          const bytes = new Uint8Array(buffer);
+          let binary = "";
+          const chunk = 8192;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+          }
+          fileBase64 = btoa(binary);
+        }
       } else {
         fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       }

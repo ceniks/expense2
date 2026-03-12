@@ -1725,7 +1725,7 @@ export async function insertStatementRows(userId: number, importId: number, acco
     .where(and(
       eq(statementRows.importId, importId),
       eq(statementRows.userId, userId),
-      sql`(type = 'credit' OR isTransfer = true)`,
+      or(eq(statementRows.type, "credit"), eq(statementRows.isTransfer, true)),
     ));
 }
 
