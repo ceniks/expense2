@@ -939,22 +939,10 @@ function ApprovePayrollModal({
             <TextInput value={netSalary} onChangeText={setNetSalary} keyboardType="decimal-pad"
               style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
           </View>
-          <View style={{ gap: 4 }}>
-            <Text style={[styles.label, { color: colors.muted }]}>Adiantamento (R$)</Text>
-            <TextInput value={advanceAmount} onChangeText={setAdvanceAmount} keyboardType="decimal-pad"
-              style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
-          </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[styles.label, { color: colors.muted }]}>VT Diário (R$)</Text>
-              <TextInput value={vtDaily} onChangeText={setVtDaily} keyboardType="decimal-pad"
-                style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
-            </View>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[styles.label, { color: colors.muted }]}>VA Diário (R$)</Text>
-              <TextInput value={vaDaily} onChangeText={setVaDaily} keyboardType="decimal-pad"
-                style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
-            </View>
+          <View style={[styles.infoBox, { backgroundColor: colors.accent, borderColor: colors.border }]}>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>
+              O adiantamento (dia 20) é preenchido manualmente na Folha do Mês.
+            </Text>
           </View>
           <View style={{ gap: 4 }}>
             <Text style={[styles.label, { color: colors.muted }]}>Dias Úteis</Text>

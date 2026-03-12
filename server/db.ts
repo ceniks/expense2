@@ -1412,21 +1412,21 @@ export async function upsertPayrollFromPdf(
       .limit(1);
 
     if (payrollRows.length > 0) {
-      // Auto-update existing approved payroll
-      await db.update(employeePayments).set({
-        netSalary: data.netSalary ?? null,
-        advanceAmount: data.advanceAmount ?? null,
-        pdfUrl: data.pdfUrl ?? null,
-      }).where(eq(employeePayments.id, payrollRows[0].id));
+      // Auto-update existing approved payroll (advanceAmount is always manual — never overwritten)
+      const updateData: Record<string, any> = { netSalary: data.netSalary ?? null };
+      if (data.pdfUrl) updateData.pdfUrl = data.pdfUrl; // only overwrite if valid
+      await db.update(employeePayments).set(updateData).where(eq(employeePayments.id, payrollRows[0].id));
 
-      // Remove any stale pending payrolls for this employee
-      await db.delete(pendingPayrolls).where(
-        and(
-          eq(pendingPayrolls.groupId, groupId),
-          eq(pendingPayrolls.employeeName, data.employeeName),
-          eq(pendingPayrolls.status, "pending")
-        )
-      );
+      // Only remove stale pending payrolls if pdfUrl was successfully extracted
+      if (data.pdfUrl) {
+        await db.delete(pendingPayrolls).where(
+          and(
+            eq(pendingPayrolls.groupId, groupId),
+            eq(pendingPayrolls.employeeName, data.employeeName),
+            eq(pendingPayrolls.status, "pending")
+          )
+        );
+      }
       return "auto_updated";
     }
   }
@@ -1441,7 +1441,7 @@ export async function upsertPayrollFromPdf(
     ))
     .limit(1);
 
-  const pendingValues = {
+  const pendingValues: Record<string, any> = {
     employeeId: empRows.length > 0 ? empRows[0].id : null,
     position: data.position ?? null,
     baseSalary: data.baseSalary ?? null,
@@ -1451,8 +1451,8 @@ export async function upsertPayrollFromPdf(
     competenceMonth: data.competenceMonth ?? null,
     competenceYear: data.competenceYear ?? null,
     rawData: data.rawData ?? null,
-    pdfUrl: data.pdfUrl ?? null,
   };
+  if (data.pdfUrl) pendingValues.pdfUrl = data.pdfUrl; // only overwrite pdfUrl if valid
 
   if (existingPending.length > 0) {
     await db.update(pendingPayrolls).set(pendingValues).where(eq(pendingPayrolls.id, existingPending[0].id));
@@ -1497,7 +1497,7 @@ export async function approvePendingPayroll(
   const position = overrides.position ?? pending.position ?? "";
   const baseSalary = overrides.baseSalary ?? pending.baseSalary ?? "0";
   const netSalary = overrides.netSalary ?? pending.netSalary ?? "0";
-  const advanceAmount = overrides.advanceAmount ?? pending.advanceAmount ?? "0";
+  // advanceAmount is always manual — never taken from the holerite
   const vtDaily = overrides.vtDaily ?? pending.vtDaily ?? "0";
   const vaDaily = overrides.vaDaily ?? "0";
   const workingDays = overrides.workingDays ?? 22;
@@ -1541,9 +1541,9 @@ export async function approvePendingPayroll(
     .limit(1);
 
   if (existingPayroll.length > 0) {
+    // Keep existing advanceAmount — it's always manually entered
     await db.update(employeePayments).set({
       netSalary,
-      advanceAmount,
       vtDaily,
       vaDaily,
       workingDays,
@@ -1555,7 +1555,7 @@ export async function approvePendingPayroll(
       userId,
       groupId,
       yearMonth,
-      advanceAmount,
+      advanceAmount: "0",  // always starts as 0 — user fills manually
       netSalary,
       vtDaily,
       vaDaily,
