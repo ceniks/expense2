@@ -358,3 +358,18 @@ export const statementRows = mysqlTable("statement_rows", {
 
 export type StatementRow = typeof statementRows.$inferSelect;
 export type InsertStatementRow = typeof statementRows.$inferInsert;
+
+/**
+ * Regras aprendidas de categorização de extrato
+ */
+export const statementRules = mysqlTable("statement_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  groupId: int("groupId"),
+  pattern: varchar("pattern", { length: 300 }).notNull(), // nome normalizado (lowercase, sem tipo)
+  category: varchar("category", { length: 100 }).notNull(),
+  profile: mysqlEnum("profile", ["Pessoal", "Empresa"]).notNull(),
+  suggestedDescription: varchar("suggestedDescription", { length: 500 }),
+  usageCount: int("usageCount").notNull().default(1),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});

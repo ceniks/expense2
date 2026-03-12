@@ -36,7 +36,14 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
   const colors = useColors();
   const utils = trpc.useUtils();
   const { data: rows = [], isLoading } = trpc.bankStatement.listRows.useQuery({ importId });
-  const approveMut = trpc.bankStatement.approveRow.useMutation({ onSuccess: () => utils.bankStatement.listRows.invalidate() });
+  const approveMut = trpc.bankStatement.approveRow.useMutation({
+    onSuccess: (data) => {
+      utils.bankStatement.listRows.invalidate();
+      if (data?.propagated && data.propagated > 0) {
+        Alert.alert("Aprendizado aplicado", `${data.propagated} transação(ões) com o mesmo nome foram categorizadas automaticamente.`);
+      }
+    }
+  });
   const ignoreMut = trpc.bankStatement.ignoreRow.useMutation({ onSuccess: () => utils.bankStatement.listRows.invalidate() });
   const approveAllMut = trpc.bankStatement.approveAll.useMutation({
     onSuccess: () => {
@@ -69,6 +76,8 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         profile: row.suggestedProfile ?? "Pessoal",
         date: row.date,
         amount: row.amount,
+        importId,
+        originalDescription: row.description,
       });
     } catch (e: any) {
       Alert.alert("Erro", e?.message);
@@ -85,6 +94,8 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         profile: editProfile,
         date: editingRow.date,
         amount: editingRow.amount,
+        importId,
+        originalDescription: editingRow.description,
       });
       setEditingRow(null);
     } catch (e: any) {
@@ -321,13 +332,14 @@ export default function StatementScreen() {
         fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       }
 
-      const { importId, total } = await uploadMut.mutateAsync({
+      const { importId, total, autoLearned } = await uploadMut.mutateAsync({
         accountId: selectedAccount,
         fileBase64,
         fileName,
         fileType,
       });
-      Alert.alert("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.`,
+      const learnedMsg = autoLearned > 0 ? `\n${autoLearned} já categorizadas automaticamente pelo histórico.` : "";
+      Alert.alert("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.${learnedMsg}`,
         [{ text: "Revisar agora", onPress: () => setTriageImportId(importId) }, { text: "Depois" }]);
     } catch (e: any) {
       Alert.alert("Erro", e?.message ?? "Falha ao importar extrato.");

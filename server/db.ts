@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, or, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, or, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, payments, categories, InsertPayment, InsertCategory, sharedGroups, groupMembers, InsertSharedGroup, InsertGroupMember, invoices, invoiceInstallments, financings, monthlyBills, monthlyBillPayments, employees, employeePayments, pendingPayrolls, bankAccounts, bankStatementImports, statementRows } from "../drizzle/schema";
+import { InsertUser, users, payments, categories, InsertPayment, InsertCategory, sharedGroups, groupMembers, InsertSharedGroup, InsertGroupMember, invoices, invoiceInstallments, financings, monthlyBills, monthlyBillPayments, employees, employeePayments, pendingPayrolls, bankAccounts, bankStatementImports, statementRows, statementRules } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -1815,4 +1815,91 @@ export async function getPayslipsForMonth(userId: number, yearMonth: string) {
     pdfUrl: r.payroll.pdfUrl ?? null,
     yearMonth: r.payroll.yearMonth,
   }));
+}
+
+// ─── Aprendizado de Categorização ─────────────────────────────────────────────
+
+/** Normaliza a descrição para usar como padrão de aprendizado.
+ *  "Pix enviado - L&f Boutique" → "l&f boutique"
+ *  "L&f Boutique" → "l&f boutique"
+ */
+export function normalizePattern(description: string): string {
+  const parts = description.split(" - ");
+  const name = parts.length > 1 ? parts.slice(1).join(" - ") : description;
+  return name.toLowerCase().trim();
+}
+
+/** Salva ou atualiza uma regra aprendida ao aprovar uma transação */
+export async function upsertStatementRule(userId: number, data: {
+  pattern: string;
+  category: string;
+  profile: "Pessoal" | "Empresa";
+  suggestedDescription: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const groupId = await getUserGroupId(userId);
+
+  // Tenta inserir; se já existe (mesmo userId+pattern), incrementa usageCount
+  await db.execute(sql`
+    INSERT INTO statement_rules (userId, groupId, pattern, category, profile, suggestedDescription, usageCount)
+    VALUES (${userId}, ${groupId}, ${data.pattern}, ${data.category}, ${data.profile}, ${data.suggestedDescription}, 1)
+    ON DUPLICATE KEY UPDATE
+      category = VALUES(category),
+      profile = VALUES(profile),
+      suggestedDescription = VALUES(suggestedDescription),
+      usageCount = usageCount + 1
+  `);
+}
+
+/** Busca todas as regras do usuário como mapa pattern → regra */
+export async function getStatementRules(userId: number): Promise<Map<string, { category: string; profile: "Pessoal" | "Empresa"; suggestedDescription: string }>> {
+  const db = await getDb();
+  if (!db) return new Map();
+  const groupId = await getUserGroupId(userId);
+
+  const rows = groupId
+    ? await db.select().from(statementRules).where(eq(statementRules.groupId, groupId))
+    : await db.select().from(statementRules).where(eq(statementRules.userId, userId));
+
+  const map = new Map<string, { category: string; profile: "Pessoal" | "Empresa"; suggestedDescription: string }>();
+  for (const r of rows) {
+    map.set(r.pattern, {
+      category: r.category,
+      profile: r.profile as "Pessoal" | "Empresa",
+      suggestedDescription: r.suggestedDescription ?? r.pattern,
+    });
+  }
+  return map;
+}
+
+/** Ao aprovar uma linha, propaga a categoria para todas as outras linhas pendentes
+ *  do mesmo import que tenham o mesmo padrão (nome). Retorna o count propagado. */
+export async function propagateCategoryToSiblings(
+  userId: number,
+  importId: number,
+  pattern: string,
+  category: string,
+  profile: "Pessoal" | "Empresa",
+  suggestedDescription: string,
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  // Busca todas as linhas pendentes do mesmo import
+  const pending = await db
+    .select()
+    .from(statementRows)
+    .where(and(eq(statementRows.importId, importId), eq(statementRows.status, "pending"), eq(statementRows.userId, userId)));
+
+  let count = 0;
+  for (const row of pending) {
+    if (normalizePattern(row.description) === pattern) {
+      await db.update(statementRows)
+        .set({ suggestedCategory: category, suggestedProfile: profile, suggestedDescription, confidence: "0.98" })
+        .where(eq(statementRows.id, row.id));
+      count++;
+    }
+  }
+  return count;
 }

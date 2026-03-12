@@ -1252,11 +1252,32 @@ Retorne SOMENTE o array JSON, sem texto extra.` },
         const empresaCategories = userCategories.filter((c: any) => !c.profile || c.profile === "Empresa").map((c: any) => c.name).join(", ");
         const pessoalCategories = userCategories.filter((c: any) => !c.profile || c.profile === "Pessoal").map((c: any) => c.name).join(", ");
 
-        // IA categoriza cada linha em batch
+        // Aplicar regras aprendidas antes da IA
+        const learnedRules = await db.getStatementRules(ctx.user.id);
+        const rowsNeedingAI: typeof rows = [];
+        const enrichedRows: any[] = new Array(rows.length);
+
+        for (let i = 0; i < rows.length; i++) {
+          const pattern = db.normalizePattern(rows[i].description);
+          const rule = learnedRules.get(pattern);
+          if (rule) {
+            // Já conhecemos esse fornecedor — aplica direto com confiança máxima
+            enrichedRows[i] = {
+              ...rows[i],
+              suggestedCategory: rule.category,
+              suggestedProfile: rule.profile,
+              suggestedDescription: rule.suggestedDescription,
+              confidence: "0.98",
+            };
+          } else {
+            rowsNeedingAI.push({ ...rows[i], _originalIndex: i } as any);
+          }
+        }
+
+        // IA categoriza apenas linhas sem regra aprendida
         const batchSize = 20;
-        const enrichedRows: any[] = [];
-        for (let i = 0; i < rows.length; i += batchSize) {
-          const batch = rows.slice(i, i + batchSize);
+        for (let i = 0; i < rowsNeedingAI.length; i += batchSize) {
+          const batch = rowsNeedingAI.slice(i, i + batchSize);
           const prompt = `Você é um assistente financeiro brasileiro. Categorize estas transações bancárias.
 
 A descrição de cada transação está no formato "TIPO - NOME", onde TIPO vem do extrato bancário (ex: "Pix enviado", "Pagamento de conta", "Vendas", "Pix recebido").
@@ -1298,18 +1319,26 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
             const parsed = JSON.parse(result);
             const arr = Array.isArray(parsed) ? parsed : parsed.rows ?? parsed.transactions ?? [];
             for (let j = 0; j < batch.length; j++) {
-              enrichedRows.push({
+              const origIdx = (batch[j] as any)._originalIndex;
+              enrichedRows[origIdx] = {
                 ...batch[j],
                 suggestedCategory: arr[j]?.category ?? "Outros",
                 suggestedProfile: arr[j]?.profile ?? "Pessoal",
                 suggestedDescription: arr[j]?.description ?? batch[j].description,
                 confidence: String(arr[j]?.confidence ?? 0.5),
-              });
+              };
             }
           } catch {
-            // Se IA falhar, usa os dados brutos
-            batch.forEach((r) => enrichedRows.push({ ...r, suggestedCategory: "Outros", suggestedProfile: "Pessoal", suggestedDescription: r.description, confidence: "0.3" }));
+            batch.forEach((r) => {
+              const origIdx = (r as any)._originalIndex;
+              enrichedRows[origIdx] = { ...r, suggestedCategory: "Outros", suggestedProfile: "Pessoal", suggestedDescription: r.description, confidence: "0.3" };
+            });
           }
+        }
+
+        // Preencher qualquer slot ainda vazio (segurança)
+        for (let i = 0; i < rows.length; i++) {
+          if (!enrichedRows[i]) enrichedRows[i] = { ...rows[i], suggestedCategory: "Outros", suggestedProfile: accountProfile, suggestedDescription: rows[i].description, confidence: "0.3" };
         }
 
         // Salvar no banco
@@ -1321,7 +1350,8 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
         });
         await db.insertStatementRows(ctx.user.id, importId, input.accountId, enrichedRows);
 
-        return { importId, total: enrichedRows.length };
+        const autoLearned = enrichedRows.filter((r) => parseFloat(r.confidence) >= 0.97).length;
+        return { importId, total: enrichedRows.length, autoLearned };
       }),
 
     approveRow: protectedProcedure
@@ -1332,10 +1362,33 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
         profile: z.enum(["Pessoal", "Empresa"]),
         date: z.string(),
         amount: z.string(),
+        importId: z.number().optional(),
+        originalDescription: z.string().optional(), // descrição original do extrato (para calcular o pattern)
       }))
-      .mutation(({ ctx, input }) => {
-        const { rowId, ...data } = input;
-        return db.approveStatementRow(rowId, ctx.user.id, data);
+      .mutation(async ({ ctx, input }) => {
+        const { rowId, importId, originalDescription, ...data } = input;
+
+        // Aprovar a linha
+        await db.approveStatementRow(rowId, ctx.user.id, data);
+
+        // Salvar/atualizar regra aprendida
+        const pattern = db.normalizePattern(originalDescription ?? input.description);
+        await db.upsertStatementRule(ctx.user.id, {
+          pattern,
+          category: input.category,
+          profile: input.profile,
+          suggestedDescription: input.description,
+        });
+
+        // Propagar categoria para linhas irmãs com mesmo nome (mesmo import)
+        let propagated = 0;
+        if (importId) {
+          propagated = await db.propagateCategoryToSiblings(
+            ctx.user.id, importId, pattern, input.category, input.profile, input.description,
+          );
+        }
+
+        return { propagated };
       }),
 
     ignoreRow: protectedProcedure
