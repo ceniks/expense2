@@ -1682,8 +1682,16 @@ export async function insertStatementRows(userId: number, importId: number, acco
   if (!db) throw new Error("Database not available");
   const groupId = await getUserGroupId(userId);
   if (rows.length === 0) return;
+  // Créditos (entradas) são ignorados automaticamente — não geram despesa
   await db.insert(statementRows).values(
-    rows.map((r) => ({ ...r, userId, groupId, importId, accountId }))
+    rows.map((r) => ({
+      ...r,
+      userId,
+      groupId,
+      importId,
+      accountId,
+      status: r.type === "credit" ? "ignored" : "pending",
+    }))
   );
 
   // Detectar transferências: mesmo usuário, mesma data, mesmo valor, tipos opostos, contas diferentes
@@ -1761,6 +1769,13 @@ export async function ignoreStatementRow(rowId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(statementRows).set({ status: "ignored" }).where(and(eq(statementRows.id, rowId), eq(statementRows.userId, userId)));
+}
+
+export async function deleteAllPendingRows(importId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(statementRows)
+    .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")));
 }
 
 export async function approveAllStatementRows(importId: number, userId: number) {

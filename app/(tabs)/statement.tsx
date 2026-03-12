@@ -51,6 +51,12 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
       utils.bankStatement.listImports.invalidate();
     }
   });
+  const deleteAllMut = trpc.bankStatement.deleteAllPending.useMutation({
+    onSuccess: () => {
+      utils.bankStatement.listRows.invalidate();
+      utils.bankStatement.listImports.invalidate();
+    }
+  });
 
   const [editingRow, setEditingRow] = useState<any | null>(null);
   const [editDesc, setEditDesc] = useState("");
@@ -132,16 +138,33 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         <Text style={[s.triageTitle, { color: colors.foreground }]}>
           Triagem — {pending.length} pendente{pending.length !== 1 ? "s" : ""}
         </Text>
-        <Pressable
-          onPress={handleApproveAll}
-          disabled={approvingAll}
-          style={({ pressed }) => [s.approveAllBtn, { backgroundColor: colors.primary, opacity: pressed || approvingAll ? 0.6 : 1 }]}
-        >
-          {approvingAll
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Aprovar Alta Confiança</Text>
-          }
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <Pressable
+            onPress={handleApproveAll}
+            disabled={approvingAll}
+            style={({ pressed }) => [s.approveAllBtn, { backgroundColor: colors.primary, opacity: pressed || approvingAll ? 0.6 : 1 }]}
+          >
+            {approvingAll
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Aprovar Alta Confiança</Text>
+            }
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Alert.alert("Apagar pendentes", "Apagar todos os lançamentos pendentes desta triagem?", [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Apagar", style: "destructive", onPress: () => deleteAllMut.mutate({ importId }) },
+              ]);
+            }}
+            disabled={deleteAllMut.isPending}
+            style={({ pressed }) => [s.approveAllBtn, { backgroundColor: "#EF4444", opacity: pressed || deleteAllMut.isPending ? 0.6 : 1 }]}
+          >
+            {deleteAllMut.isPending
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Apagar Pendentes</Text>
+            }
+          </Pressable>
+        </View>
       </View>
 
       {isLoading
