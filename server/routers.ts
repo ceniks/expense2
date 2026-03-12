@@ -1125,9 +1125,13 @@ Retorne SOMENTE o array JSON, sem texto extra.` },
           throw new Error("Nenhuma transação encontrada no arquivo. Verifique o formato.");
         }
 
-        // Buscar categorias do usuário para contexto da IA
+        // Buscar categorias e conta selecionada para contexto da IA
         const userCategories = await db.getUserCategories(ctx.user.id);
-        const categoryNames = userCategories.map((c) => c.name).join(", ");
+        const allAccounts = await db.listBankAccounts(ctx.user.id);
+        const selectedAcc = allAccounts.find((a: any) => a.id === input.accountId);
+        const accountProfile = selectedAcc?.profile ?? "Pessoal";
+        const empresaCategories = userCategories.filter((c: any) => !c.profile || c.profile === "Empresa").map((c: any) => c.name).join(", ");
+        const pessoalCategories = userCategories.filter((c: any) => !c.profile || c.profile === "Pessoal").map((c: any) => c.name).join(", ");
 
         // IA categoriza cada linha em batch
         const batchSize = 20;
@@ -1135,13 +1139,22 @@ Retorne SOMENTE o array JSON, sem texto extra.` },
         for (let i = 0; i < rows.length; i += batchSize) {
           const batch = rows.slice(i, i + batchSize);
           const prompt = `Você é um assistente financeiro brasileiro. Categorize estas transações bancárias.
-Categorias disponíveis: ${categoryNames || "Alimentação, Transporte, Saúde, Moradia, Lazer, Educação, Serviços, Outros"}
+
+Contexto da conta: perfil padrão "${accountProfile}", mas classifique baseado na DESCRIÇÃO da transação, não apenas no perfil da conta.
+
+Regras para profile:
+- "Empresa": fornecedores, serviços empresariais, CNPJ, notas fiscais, salários, aluguel comercial, material de escritório, software/SaaS
+- "Pessoal": supermercado, restaurante, farmácia, lazer, streaming, vestuário, transporte pessoal, saúde pessoal
+- Em caso de dúvida, use o perfil da conta: "${accountProfile}"
+
+Categorias Empresa disponíveis: ${empresaCategories || "Serviços, Transporte, Alimentação, Outros"}
+Categorias Pessoal disponíveis: ${pessoalCategories || "Alimentação, Transporte, Saúde, Lazer, Outros"}
 
 Para cada transação, retorne:
-- category: categoria mais adequada da lista acima
-- profile: "Pessoal" ou "Empresa" (baseado na descrição)
-- description: descrição limpa e legível em português
-- confidence: número de 0.0 a 1.0 indicando sua confiança
+- category: categoria mais adequada conforme o profile determinado
+- profile: "Pessoal" ou "Empresa" conforme as regras acima
+- description: descrição limpa e legível em português (ex: "Uber - Corrida", "Supermercado Pão de Açúcar", "AWS - Hospedagem")
+- confidence: 0.0 a 1.0 (alto quando a descrição é clara, baixo quando ambígua)
 
 Transações:
 ${JSON.stringify(batch)}
