@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS pending_invoices (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  userId INT NOT NULL,\n  groupId INT,\n  supplierName VARCHAR(300),\n  totalAmount DECIMAL(12,2),\n  issueDate VARCHAR(10),\n  description TEXT,\n  imageUrl TEXT,\n  category VARCHAR(100) NOT NULL DEFAULT 'Outros',\n  profile ENUM('Pessoal','Empresa') NOT NULL DEFAULT 'Empresa',\n  installmentsJson TEXT,\n  fromEmail VARCHAR(320),\n  emailSubject VARCHAR(500),\n  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',\n  createdAt TIMESTAMP NOT NULL DEFAULT NOW()\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute CREATE TABLE IF NOT EXISTS pending_invoices (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  userId INT NOT NULL,\n  groupId INT,\n  supplierName VARCHAR(300),\n  totalAmount DECIMAL(12,2),\n  issueDate VARCHAR(10),\n  description TEXT,\n  imageUrl TEXT,\n  category VARCHAR(100) NOT NULL DEFAULT 'Outros',\n  profile ENUM('Pessoal','Empresa') NOT NULL DEFAULT 'Empresa',\n  installmentsJson TEXT,\n  fromEmail VARCHAR(320),\n  emailSubject VARCHAR(500),\n  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',\n  createdAt TIMESTAMP NOT NULL DEFAULT NOW()\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 238
+}

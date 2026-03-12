@@ -1,0 +1,8 @@
+{
+  "query": "ALTER TABLE employee_payments ADD COLUMN other_benefits DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER va_daily;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute ALTER TABLE employee_payments ADD COLUMN other_benefits DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER va_daily;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'va_daily' in 'employee_payments'"
+  ]
+}

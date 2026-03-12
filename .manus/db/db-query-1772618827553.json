@@ -1,0 +1,46 @@
+{
+  "query": "SELECT id, name, startDate, dueDay, totalInstallments, paidInstallments, installmentAmount FROM financings LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SELECT id, name, startDate, dueDay, totalInstallments, paidInstallments, installmentAmount FROM financings LIMIT 10;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Carro Porsche",
+      "startDate": "2026-03-03",
+      "dueDay": "23",
+      "totalInstallments": "36",
+      "paidInstallments": "4",
+      "installmentAmount": "11217.00"
+    },
+    {
+      "id": "2",
+      "name": "Credito para Investidor",
+      "startDate": "2026-03-04",
+      "dueDay": "10",
+      "totalInstallments": "24",
+      "paidInstallments": "3",
+      "installmentAmount": "4136.00"
+    },
+    {
+      "id": "30001",
+      "name": "Bongo",
+      "startDate": "2026-03-04",
+      "dueDay": "26",
+      "totalInstallments": "48",
+      "paidInstallments": "6",
+      "installmentAmount": "5115.00"
+    },
+    {
+      "id": "30002",
+      "name": "teste",
+      "startDate": "2026-03-04",
+      "dueDay": "10",
+      "totalInstallments": "20",
+      "paidInstallments": "3",
+      "installmentAmount": "10.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tstartDate\tdueDay\ttotalInstallments\tpaidInstallments\tinstallmentAmount\n1\tCarro Porsche\t2026-03-03\t23\t36\t4\t11217.00\n2\tCredito para Investidor\t2026-03-04\t10\t24\t3\t4136.00\n30001\tBongo\t2026-03-04\t26\t48\t6\t5115.00\n30002\tteste\t2026-03-04\t10\t20\t3\t10.00\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

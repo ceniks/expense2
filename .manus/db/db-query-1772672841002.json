@@ -1,0 +1,9 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS pending_payrolls (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  group_id INT NOT NULL,\n  employee_id INT NULL,\n  employee_name VARCHAR(255) NOT NULL,\n  position VARCHAR(255) NULL,\n  base_salary DECIMAL(10,2) NULL,\n  net_salary DECIMAL(10,2) NULL,\n  advance_amount DECIMAL(10,2) NULL,\n  vt_daily DECIMAL(10,2) NULL,\n  va_monthly DECIMAL(10,2) NULL,\n  competence_month INT NULL,\n  competence_year INT NULL,\n  raw_data JSON NULL,\n  pdf_url VARCHAR(500) NULL,\n  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',\n  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute \nCREATE TABLE IF NOT EXISTS pending_payrolls (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  group_id INT NOT NULL,\n  employee_id INT NULL,\n  employee_name VARCHAR(255) NOT NULL,\n  position VARCHAR(255) NULL,\n  base_salary DECIMAL(10,2) NULL,\n  net_salary DECIMAL(10,2) NULL,\n  advance_amount DECIMAL(10,2) NULL,\n  vt_daily DECIMAL(10,2) NULL,\n  va_monthly DECIMAL(10,2) NULL,\n  competence_month INT NULL,\n  competence_year INT NULL,\n  raw_data JSON NULL,\n  pdf_url VARCHAR(500) NULL,\n  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',\n  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 253
+}

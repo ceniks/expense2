@@ -1,0 +1,104 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1763372440610,
+      "tag": "0000_elite_eternals",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1772426235159,
+      "tag": "0001_dusty_blue_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1772486080908,
+      "tag": "0002_open_loki",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1772547639349,
+      "tag": "0003_lonely_adam_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1772579152771,
+      "tag": "0004_violet_miss_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1772581281061,
+      "tag": "0005_nostalgic_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1772640121221,
+      "tag": "0006_past_rawhide_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1772660815586,
+      "tag": "0007_modern_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1772671798415,
+      "tag": "0008_youthful_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1772673338487,
+      "tag": "0009_loving_prodigy",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1772717956816,
+      "tag": "0010_slippery_blindfold",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1772764002447,
+      "tag": "0011_many_venom",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1772764543695,
+      "tag": "0012_numerous_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1772766253035,
+      "tag": "0013_robust_liz_osborn",
+      "breakpoints": true
+    }
+  ]
+}

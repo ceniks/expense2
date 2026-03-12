@@ -1,0 +1,8 @@
+{
+  "query": "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, TABLE_NAME, REFERENCED_TABLE_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'pending_payrolls';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, TABLE_NAME, REFERENCED_TABLE_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'pending_payrolls';",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'referenced_table_name' in 'field list'"
+  ]
+}

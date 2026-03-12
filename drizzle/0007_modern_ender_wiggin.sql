@@ -1,0 +1,1 @@
+ALTER TABLE `invoice_installments` ADD `alreadyPaid` tinyint DEFAULT 0 NOT NULL;

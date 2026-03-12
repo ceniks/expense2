@@ -1,0 +1,226 @@
+{
+  "query": "SELECT id, group_id, employee_name, net_salary, status, created_at FROM pending_payrolls ORDER BY created_at DESC LIMIT 30;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SELECT id, group_id, employee_name, net_salary, status, created_at FROM pending_payrolls ORDER BY created_at DESC LIMIT 30;",
+  "rows": [
+    {
+      "id": "120013",
+      "group_id": "1",
+      "employee_name": "KARINA DE ANDRADE DO NASCIMENTO",
+      "net_salary": "4493.74",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120022",
+      "group_id": "1",
+      "employee_name": "ROSEANE GONÇALVES",
+      "net_salary": "799.43",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120020",
+      "group_id": "1",
+      "employee_name": "MYRELLA KIMBERLY ALVES GUIMARAES",
+      "net_salary": "1328.36",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120019",
+      "group_id": "1",
+      "employee_name": "MIRELLA SOARES DE ALMEIDA",
+      "net_salary": "2571.84",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120011",
+      "group_id": "1",
+      "employee_name": "JONATAS BERNARDO QUEIROZ",
+      "net_salary": "1324.23",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120018",
+      "group_id": "1",
+      "employee_name": "MAYARA REGINA DOS SANTOS BATISTA",
+      "net_salary": "2925.29",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120017",
+      "group_id": "1",
+      "employee_name": "MARILENE PIRES SANTOS",
+      "net_salary": "1477.34",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120016",
+      "group_id": "1",
+      "employee_name": "MARCELO ARANTES DA SILVA",
+      "net_salary": "1894.32",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120021",
+      "group_id": "1",
+      "employee_name": "NICOLLY DE PAULA VAZ",
+      "net_salary": "1127.61",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120015",
+      "group_id": "1",
+      "employee_name": "LUCIO ISIDRO LIMACHI LIMACHI",
+      "net_salary": "973.10",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120014",
+      "group_id": "1",
+      "employee_name": "LUCIANA SOUZA SANTOS",
+      "net_salary": "1472.17",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120023",
+      "group_id": "1",
+      "employee_name": "WESLEY DE OLIVEIRA DA SILVA",
+      "net_salary": "455.04",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120012",
+      "group_id": "1",
+      "employee_name": "JOSÉ ANTONIO DE SOUSA",
+      "net_salary": "1778.02",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:33"
+    },
+    {
+      "id": "120004",
+      "group_id": "1",
+      "employee_name": "BRUNO SANTOS DE LIMA",
+      "net_salary": "140.08",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120009",
+      "group_id": "1",
+      "employee_name": "ELIZABETH APARECIDA DOS SANTOS",
+      "net_salary": "422.33",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120006",
+      "group_id": "1",
+      "employee_name": "DAIANE MICHELE DA SILVA",
+      "net_salary": "1110.59",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120010",
+      "group_id": "1",
+      "employee_name": "FABIANA DA SILVA SAMPAIO",
+      "net_salary": "1228.80",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120002",
+      "group_id": "1",
+      "employee_name": "ALINE BUENO DE SOUZA CARVALHO",
+      "net_salary": "1944.64",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120008",
+      "group_id": "1",
+      "employee_name": "DEBORA ALVES DE SANTANA",
+      "net_salary": "895.02",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120001",
+      "group_id": "1",
+      "employee_name": "ADRIANA DAYANE DE PAULA VAZ",
+      "net_salary": "1559.16",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120007",
+      "group_id": "1",
+      "employee_name": "DALVA SOARES DE ANDRADE",
+      "net_salary": "2482.17",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120005",
+      "group_id": "1",
+      "employee_name": "CELIA APARECIDA EVANGELISTA",
+      "net_salary": "907.86",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "120003",
+      "group_id": "1",
+      "employee_name": "AUGUSTO TADEU DE MOURA",
+      "net_salary": "1083.42",
+      "status": "pending",
+      "created_at": "2026-03-06 01:40:32"
+    },
+    {
+      "id": "90001",
+      "group_id": "1",
+      "employee_name": "Maria Santos",
+      "net_salary": "2100.00",
+      "status": "pending",
+      "created_at": "2026-03-06 01:03:37"
+    },
+    {
+      "id": "60001",
+      "group_id": "1",
+      "employee_name": "Joao da Silva",
+      "net_salary": "2500.00",
+      "status": "pending",
+      "created_at": "2026-03-05 23:06:17"
+    },
+    {
+      "id": "30006",
+      "group_id": "1",
+      "employee_name": "João da Silva",
+      "net_salary": "NULL",
+      "status": "pending",
+      "created_at": "2026-03-05 22:47:28"
+    },
+    {
+      "id": "30005",
+      "group_id": "1",
+      "employee_name": "João da Silva",
+      "net_salary": "NULL",
+      "status": "pending",
+      "created_at": "2026-03-05 22:47:06"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tgroup_id\temployee_name\tnet_salary\tstatus\tcreated_at\n120013\t1\tKARINA DE ANDRADE DO NASCIMENTO\t4493.74\tpending\t2026-03-06 01:40:33\n120022\t1\tROSEANE GONÇALVES\t799.43\tpending\t2026-03-06 01:40:33\n120020\t1\tMYRELLA KIMBERLY ALVES GUIMARAES\t1328.36\tpending\t2026-03-06 01:40:33\n120019\t1\tMIRELLA SOARES DE ALMEIDA\t2571.84\tpending\t2026-03-06 01:40:33\n120011\t1\tJONATAS BERNARDO QUEIROZ\t1324.23\tpending\t2026-03-06 01:40:33\n120018\t1\tMAYARA REGINA DOS SANTOS BATISTA\t2925.29\tpending\t2026-03-06 01:40:33\n120017\t1\tMARILENE PIRES SANTOS\t1477.34\tpending\t2026-03-06 01:40:33\n120016\t1\tMARCELO ARANTES DA SILVA\t1894.32\tpending\t2026-03-06 01:40:33\n120021\t1\tNICOLLY DE PAULA VAZ\t1127.61\tpending\t2026-03-06 01:40:33\n120015\t1\tLUCIO ISIDRO LIMACHI LIMACHI\t973.10\tpending\t2026-03-06 01:40:33\n120014\t1\tLUCIANA SOUZA SANTOS\t1472.17\tpending\t2026-03-06 01:40:33\n120023\t1\tWESLEY DE OLIVEIRA DA SILVA\t455.04\tpending\t2026-03-06 01:40:33\n120012\t1\tJOSÉ ANTONIO DE SOUSA\t1778.02\tpending\t2026-03-06 01:40:33\n120004\t1\tBRUNO SANTOS DE LIMA\t140.08\tpending\t2026-03-06 01:40:32\n120009\t1\tELIZABETH APARECIDA DOS SANTOS\t422.33\tpending\t2026-03-06 01:40:32\n120006\t1\tDAIANE MICHELE DA SILVA\t1110.59\tpending\t2026-03-06 01:40:32\n120010\t1\tFABIANA DA SILVA SAMPAIO\t1228.80\tpending\t2026-03-06 01:40:32\n120002\t1\tALINE BUENO DE SOUZA CARVALHO\t1944.64\tpending\t2026-03-06 01:40:32\n120008\t1\tDEBORA ALVES DE SANTANA\t895.02\tpending\t2026-03-06 01:40:32\n120001\t1\tADRIANA DAYANE DE PAULA VAZ\t1559.16\tpending\t2026-03-06 01:40:32\n120007\t1\tDALVA SOARES DE ANDRADE\t2482.17\tpending\t2026-03-06 01:40:32\n120005\t1\tCELIA APARECIDA EVANGELISTA\t907.86\tpending\t2026-03-06 01:40:32\n120003\t1\tAUGUSTO TADEU DE MOURA\t1083.42\tpending\t2026-03-06 01:40:32\n90001\t1\tMaria Santos\t2100.00\tpending\t2026-03-06 01:03:37\n60001\t1\tJoao da Silva\t2500.00\tpending\t2026-03-05 23:06:17\n30006\t1\tJoão da Silva\tNULL\tpending\t2026-03-05 22:47:28\n30005\t1\tJoão da Silva\tNULL\tpending\t2026-03-05 22:47:06\n",
+  "stderr": "",
+  "execution_time_ms": 56
+}

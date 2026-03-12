@@ -1,0 +1,34 @@
+{
+  "query": "SELECT u.id, u.name, u.email, gm.groupId FROM users u LEFT JOIN group_members gm ON gm.userId = u.id ORDER BY u.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SELECT u.id, u.name, u.email, gm.groupId FROM users u LEFT JOIN group_members gm ON gm.userId = u.id ORDER BY u.id;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Luis Henrique",
+      "email": "luhe.net@gmail.com",
+      "groupId": "1"
+    },
+    {
+      "id": "90006",
+      "name": "Franciele Soares",
+      "email": "francielelef@gmail.com",
+      "groupId": "1"
+    },
+    {
+      "id": "480001",
+      "name": "Teste User",
+      "email": "novo@teste.com",
+      "groupId": "NULL"
+    },
+    {
+      "id": "540025",
+      "name": "Teste",
+      "email": "teste@teste.com",
+      "groupId": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tgroupId\n1\tLuis Henrique\tluhe.net@gmail.com\t1\n90006\tFranciele Soares\tfrancielelef@gmail.com\t1\n480001\tTeste User\tnovo@teste.com\tNULL\n540025\tTeste\tteste@teste.com\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 111
+}

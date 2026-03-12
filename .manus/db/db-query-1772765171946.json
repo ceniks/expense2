@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE employee_payments ADD COLUMN pdfUrl VARCHAR(500) NULL DEFAULT NULL;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute ALTER TABLE employee_payments ADD COLUMN pdfUrl VARCHAR(500) NULL DEFAULT NULL;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 849
+}

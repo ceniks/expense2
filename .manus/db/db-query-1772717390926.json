@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE employee_payments \n  ADD COLUMN workingDays int DEFAULT 22 COMMENT 'Dias úteis do mês para cálculo de VT e VA',\n  ADD COLUMN vtDaily decimal(12,2) DEFAULT 0 COMMENT 'VT diário (copiado do funcionário no momento do pagamento)',\n  ADD COLUMN vaDaily decimal(12,2) DEFAULT 0 COMMENT 'VA diário (copiado do funcionário no momento do pagamento)';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute \nALTER TABLE employee_payments \n  ADD COLUMN workingDays int DEFAULT 22 COMMENT 'Dias úteis do mês para cálculo de VT e VA',\n  ADD COLUMN vtDaily decimal(12,2) DEFAULT 0 COMMENT 'VT diário (copiado do funcionário no momento do pagamento)',\n  ADD COLUMN vaDaily decimal(12,2) DEFAULT 0 COMMENT 'VA diário (copiado do funcionário no momento do pagamento)';\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1506
+}

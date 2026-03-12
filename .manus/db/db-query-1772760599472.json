@@ -1,0 +1,62 @@
+{
+  "query": "SELECT id, group_id, employee_name, net_salary, advance_amount, vt_daily, va_monthly, competence_month, competence_year, status, created_at FROM pending_payrolls ORDER BY id DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SELECT id, group_id, employee_name, net_salary, advance_amount, vt_daily, va_monthly, competence_month, competence_year, status, created_at FROM pending_payrolls ORDER BY id DESC LIMIT 20;",
+  "rows": [
+    {
+      "id": "90001",
+      "group_id": "1",
+      "employee_name": "Maria Santos",
+      "net_salary": "2100.00",
+      "advance_amount": "500.00",
+      "vt_daily": "12.50",
+      "va_monthly": "300.00",
+      "competence_month": "2",
+      "competence_year": "2026",
+      "status": "pending",
+      "created_at": "2026-03-06 01:03:37"
+    },
+    {
+      "id": "60001",
+      "group_id": "1",
+      "employee_name": "Joao da Silva",
+      "net_salary": "2500.00",
+      "advance_amount": "500.00",
+      "vt_daily": "NULL",
+      "va_monthly": "300.00",
+      "competence_month": "3",
+      "competence_year": "2026",
+      "status": "pending",
+      "created_at": "2026-03-05 23:06:17"
+    },
+    {
+      "id": "30006",
+      "group_id": "1",
+      "employee_name": "João da Silva",
+      "net_salary": "NULL",
+      "advance_amount": "NULL",
+      "vt_daily": "NULL",
+      "va_monthly": "NULL",
+      "competence_month": "NULL",
+      "competence_year": "NULL",
+      "status": "pending",
+      "created_at": "2026-03-05 22:47:28"
+    },
+    {
+      "id": "30005",
+      "group_id": "1",
+      "employee_name": "João da Silva",
+      "net_salary": "NULL",
+      "advance_amount": "NULL",
+      "vt_daily": "NULL",
+      "va_monthly": "NULL",
+      "competence_month": "NULL",
+      "competence_year": "NULL",
+      "status": "pending",
+      "created_at": "2026-03-05 22:47:06"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tgroup_id\temployee_name\tnet_salary\tadvance_amount\tvt_daily\tva_monthly\tcompetence_month\tcompetence_year\tstatus\tcreated_at\n90001\t1\tMaria Santos\t2100.00\t500.00\t12.50\t300.00\t2\t2026\tpending\t2026-03-06 01:03:37\n60001\t1\tJoao da Silva\t2500.00\t500.00\tNULL\t300.00\t3\t2026\tpending\t2026-03-05 23:06:17\n30006\t1\tJoão da Silva\tNULL\tNULL\tNULL\tNULL\tNULL\tNULL\tpending\t2026-03-05 22:47:28\n30005\t1\tJoão da Silva\tNULL\tNULL\tNULL\tNULL\tNULL\tNULL\tpending\t2026-03-05 22:47:06\n",
+  "stderr": "",
+  "execution_time_ms": 761
+}

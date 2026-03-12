@@ -1,0 +1,14 @@
+{
+  "query": "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'pending_payrolls';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'pending_payrolls';",
+  "rows": [
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "CONSTRAINT_TYPE": "PRIMARY KEY"
+    }
+  ],
+  "messages": [],
+  "stdout": "CONSTRAINT_NAME\tCONSTRAINT_TYPE\nPRIMARY\tPRIMARY KEY\n",
+  "stderr": "",
+  "execution_time_ms": 49
+}

@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE employee_payments ADD COLUMN otherBenefits DECIMAL(12,2) NOT NULL DEFAULT 0;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute ALTER TABLE employee_payments ADD COLUMN otherBenefits DECIMAL(12,2) NOT NULL DEFAULT 0;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 784
+}

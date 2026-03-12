@@ -1,0 +1,33 @@
+{
+  "query": "SHOW CREATE TABLE pending_payrolls;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4BdzgLF4GXyBwp9.root --database AjMw55p7jRc9aMyZzMJuCD --execute SHOW CREATE TABLE pending_payrolls;",
+  "rows": [
+    {
+      "Table": "pending_payrolls",
+      "Create Table": "CREATE TABLE `pending_payrolls` ("
+    }
+  ],
+  "messages": [
+    "  `id` int NOT NULL AUTO_INCREMENT,",
+    "  `group_id` int NOT NULL,",
+    "  `employee_id` int DEFAULT NULL,",
+    "  `employee_name` varchar(255) NOT NULL,",
+    "  `position` varchar(255) DEFAULT NULL,",
+    "  `base_salary` decimal(10,2) DEFAULT NULL,",
+    "  `net_salary` decimal(10,2) DEFAULT NULL,",
+    "  `advance_amount` decimal(10,2) DEFAULT NULL,",
+    "  `vt_daily` decimal(10,2) DEFAULT NULL,",
+    "  `va_monthly` decimal(10,2) DEFAULT NULL,",
+    "  `competence_month` int DEFAULT NULL,",
+    "  `competence_year` int DEFAULT NULL,",
+    "  `raw_data` json DEFAULT NULL,",
+    "  `pdf_url` varchar(500) DEFAULT NULL,",
+    "  `status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',",
+    "  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,",
+    "  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */",
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin AUTO_INCREMENT=150001"
+  ],
+  "stdout": "Table\tCreate Table\npending_payrolls\tCREATE TABLE `pending_payrolls` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `group_id` int NOT NULL,\n  `employee_id` int DEFAULT NULL,\n  `employee_name` varchar(255) NOT NULL,\n  `position` varchar(255) DEFAULT NULL,\n  `base_salary` decimal(10,2) DEFAULT NULL,\n  `net_salary` decimal(10,2) DEFAULT NULL,\n  `advance_amount` decimal(10,2) DEFAULT NULL,\n  `vt_daily` decimal(10,2) DEFAULT NULL,\n  `va_monthly` decimal(10,2) DEFAULT NULL,\n  `competence_month` int DEFAULT NULL,\n  `competence_year` int DEFAULT NULL,\n  `raw_data` json DEFAULT NULL,\n  `pdf_url` varchar(500) DEFAULT NULL,\n  `status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',\n  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin AUTO_INCREMENT=150001\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}
