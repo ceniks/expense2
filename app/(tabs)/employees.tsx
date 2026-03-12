@@ -621,8 +621,7 @@ function PayrollTab() {
 
   const changeMonth = (delta: number) => {
     const [y, m] = yearMonth.split("-").map(Number);
-    let nm = m + delta;
-    let ny = y;
+    let nm = m + delta, ny = y;
     if (nm < 1) { nm = 12; ny--; }
     if (nm > 12) { nm = 1; ny++; }
     setYearMonth(`${ny}-${String(nm).padStart(2, "0")}`);
@@ -653,8 +652,22 @@ function PayrollTab() {
     }
   };
 
+  const list = payrollList as any[];
+
+  const totalSalary = list.reduce((sum, { payroll }) => {
+    const vt = parseFloat(payroll.vtDaily || "0") * (payroll.workingDays || 22);
+    const va = parseFloat(payroll.vaDaily || "0") * (payroll.workingDays || 22);
+    return sum + parseFloat(payroll.netSalary || "0") + vt + va + parseFloat(payroll.otherBenefits || "0");
+  }, 0);
+
+  const totalAdvance = list.reduce((sum, { payroll }) => sum + parseFloat(payroll.advanceAmount || "0"), 0);
+
+  const salaryPaidCount = list.filter(({ payroll }) => payroll.salaryPaidAt).length;
+  const advancePaidCount = list.filter(({ payroll }) => payroll.advancePaidAt).length;
+
   return (
     <View style={{ flex: 1 }}>
+      {/* Month selector */}
       <View style={[styles.monthRow, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthBtn}>
           <IconSymbol name="chevron.left" size={20} color={colors.primary} />
@@ -667,122 +680,139 @@ function PayrollTab() {
 
       {isLoading ? (
         <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
-      ) : (payrollList as any[]).length === 0 ? (
+      ) : list.length === 0 ? (
         <View style={styles.center}>
           <IconSymbol name="doc.text.fill" size={48} color={colors.border} />
           <Text style={[styles.emptyText, { color: colors.muted }]}>Nenhum funcionário cadastrado</Text>
         </View>
       ) : (
-        <FlatList
-          data={payrollList as any[]}
-          keyExtractor={(item) => String(item.employee.id)}
-          contentContainerStyle={{ padding: 16, gap: 12 }}
-          renderItem={({ item }) => {
-            const { employee, payroll } = item;
-            const vtTotal = (parseFloat(payroll.vtDaily || "0") * (payroll.workingDays || 22)).toFixed(2);
-            const vaTotal = (parseFloat(payroll.vaDaily || "0") * (payroll.workingDays || 22)).toFixed(2);
-            const salaryTotal = (
-              parseFloat(payroll.netSalary || "0") +
-              parseFloat(vtTotal) +
-              parseFloat(vaTotal) +
-              parseFloat(payroll.otherBenefits || "0")
-            ).toFixed(2);
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 20 }}>
 
-            return (
-              <View style={[styles.payrollCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.cardName, { color: colors.foreground, marginBottom: 4 }]}>{employee.fullName}</Text>
-                {employee.role ? <Text style={[styles.cardRole, { color: colors.muted, marginBottom: 8 }]}>{employee.role}</Text> : null}
+          {/* ── Dia 05 — Salário ── */}
+          <View>
+            <View style={[styles.listHeader, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.listHeaderTitle, { color: colors.primary }]}>Pagamento — Dia 05</Text>
+                <Text style={[styles.listHeaderSub, { color: colors.muted }]}>
+                  {salaryPaidCount}/{list.length} pagos · Total {fmtBRL(totalSalary)}
+                </Text>
+              </View>
+              <View style={[styles.dayBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.dayBadgeText}>05</Text>
+              </View>
+            </View>
 
-                {/* Adiantamento */}
-                <View style={[styles.paySection, { borderColor: colors.border }]}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={[styles.paySectionTitle, { color: colors.foreground }]}>Adiantamento (dia 20)</Text>
+            <View style={{ gap: 8, marginTop: 8 }}>
+              {list.map(({ employee, payroll }) => {
+                const vtTotal = parseFloat(payroll.vtDaily || "0") * (payroll.workingDays || 22);
+                const vaTotal = parseFloat(payroll.vaDaily || "0") * (payroll.workingDays || 22);
+                const salaryTotal = (
+                  parseFloat(payroll.netSalary || "0") + vtTotal + vaTotal + parseFloat(payroll.otherBenefits || "0")
+                ).toFixed(2);
+
+                return (
+                  <View key={`sal-${employee.id}`} style={[styles.payRowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.cardName, { color: colors.foreground }]}>{employee.fullName}</Text>
+                      {employee.role ? <Text style={[styles.cardRole, { color: colors.muted }]}>{employee.role}</Text> : null}
+                      <View style={{ gap: 1, marginTop: 4 }}>
+                        <Text style={[styles.payDetail, { color: colors.muted }]}>
+                          Líquido: <Text style={{ color: colors.foreground }}>{fmtBRL(payroll.netSalary)}</Text>
+                          {"  "}VT: <Text style={{ color: colors.foreground }}>{fmtBRL(vtTotal.toFixed(2))}</Text>
+                          {"  "}VA: <Text style={{ color: colors.foreground }}>{fmtBRL(vaTotal.toFixed(2))}</Text>
+                        </Text>
+                      </View>
+                      <Text style={[styles.payAmount, { color: colors.foreground, marginTop: 4 }]}>{fmtBRL(salaryTotal)}</Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end", gap: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => { setEditPayroll({ ...payroll, employeeName: employee.fullName }); setEditMode("salary"); }}
+                        style={[styles.iconBtn, { backgroundColor: colors.background }]}
+                      >
+                        <IconSymbol name="pencil" size={15} color={colors.primary} />
+                      </TouchableOpacity>
+                      {payroll.salaryPaidAt ? (
+                        <View style={{ alignItems: "flex-end", gap: 4 }}>
+                          <View style={[styles.paidBadge, { backgroundColor: colors.success + "22" }]}>
+                            <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700" }}>✓ Pago</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => handleUnmark(payroll.id, "salary")}>
+                            <Text style={{ color: colors.muted, fontSize: 11 }}>Desfazer</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => setPayConfirm({ payrollId: payroll.id, type: "salary", name: employee.fullName })}
+                          style={[styles.payBtnSmall, { backgroundColor: colors.primary }]}
+                        >
+                          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 11 }}>Pagar</Text>
+                        </TouchableOpacity>
+                      )}
+                      {payroll.pdfUrl && (
+                        <TouchableOpacity onPress={() => downloadPdf(payroll.pdfUrl, `holerite_${employee.fullName.replace(/\s+/g, "_")}.pdf`)}>
+                          <IconSymbol name="arrow.down.doc" size={15} color={colors.primary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* ── Dia 20 — Adiantamento ── */}
+          <View>
+            <View style={[styles.listHeader, { backgroundColor: colors.warning + "12", borderColor: colors.warning + "30" }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.listHeaderTitle, { color: colors.warning }]}>Adiantamento — Dia 20</Text>
+                <Text style={[styles.listHeaderSub, { color: colors.muted }]}>
+                  {advancePaidCount}/{list.length} pagos · Total {fmtBRL(totalAdvance)}
+                </Text>
+              </View>
+              <View style={[styles.dayBadge, { backgroundColor: colors.warning }]}>
+                <Text style={styles.dayBadgeText}>20</Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 8, marginTop: 8 }}>
+              {list.map(({ employee, payroll }) => (
+                <View key={`adv-${employee.id}`} style={[styles.payRowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardName, { color: colors.foreground }]}>{employee.fullName}</Text>
+                    {employee.role ? <Text style={[styles.cardRole, { color: colors.muted }]}>{employee.role}</Text> : null}
+                    <Text style={[styles.payAmount, { color: colors.foreground, marginTop: 4 }]}>{fmtBRL(payroll.advanceAmount)}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 6 }}>
                     <TouchableOpacity
                       onPress={() => { setEditPayroll({ ...payroll, employeeName: employee.fullName }); setEditMode("advance"); }}
-                      style={{ padding: 4 }}
+                      style={[styles.iconBtn, { backgroundColor: colors.background }]}
                     >
-                      <IconSymbol name="pencil" size={16} color={colors.primary} />
+                      <IconSymbol name="pencil" size={15} color={colors.primary} />
                     </TouchableOpacity>
-                  </View>
-                  <Text style={[styles.payAmount, { color: colors.foreground }]}>{fmtBRL(payroll.advanceAmount)}</Text>
-                  {payroll.advancePaidAt ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
-                      <View style={[styles.paidBadge, { backgroundColor: colors.success + "22" }]}>
-                        <Text style={{ color: colors.success, fontSize: 12, fontWeight: "600" }}>✓ Pago</Text>
+                    {payroll.advancePaidAt ? (
+                      <View style={{ alignItems: "flex-end", gap: 4 }}>
+                        <View style={[styles.paidBadge, { backgroundColor: colors.success + "22" }]}>
+                          <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700" }}>✓ Pago</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleUnmark(payroll.id, "advance")}>
+                          <Text style={{ color: colors.muted, fontSize: 11 }}>Desfazer</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity onPress={() => handleUnmark(payroll.id, "advance")}>
-                        <Text style={{ color: colors.muted, fontSize: 12 }}>Desfazer</Text>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => setPayConfirm({ payrollId: payroll.id, type: "advance", name: employee.fullName })}
+                        style={[styles.payBtnSmall, { backgroundColor: colors.warning }]}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 11 }}>Pagar</Text>
                       </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => setPayConfirm({ payrollId: payroll.id, type: "advance", name: employee.fullName })}
-                      style={[styles.payBtn, { backgroundColor: colors.primary }]}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>Marcar como Pago</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* Salário */}
-                <View style={[styles.paySection, { borderColor: colors.border, borderTopWidth: 1, marginTop: 10 }]}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={[styles.paySectionTitle, { color: colors.foreground }]}>Salário (dia 05)</Text>
-                    <TouchableOpacity
-                      onPress={() => { setEditPayroll({ ...payroll, employeeName: employee.fullName }); setEditMode("salary"); }}
-                      style={{ padding: 4 }}
-                    >
-                      <IconSymbol name="pencil" size={16} color={colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-                  <View style={{ gap: 2, marginTop: 4 }}>
-                    <Text style={[styles.payDetail, { color: colors.muted }]}>
-                      Líquido: <Text style={{ color: colors.foreground }}>{fmtBRL(payroll.netSalary)}</Text>
-                    </Text>
-                    <Text style={[styles.payDetail, { color: colors.muted }]}>
-                      VT ({payroll.workingDays}d × {fmtBRL(payroll.vtDaily)}): <Text style={{ color: colors.foreground }}>{fmtBRL(vtTotal)}</Text>
-                    </Text>
-                    <Text style={[styles.payDetail, { color: colors.muted }]}>
-                      VA ({payroll.workingDays}d × {fmtBRL(payroll.vaDaily)}): <Text style={{ color: colors.foreground }}>{fmtBRL(vaTotal)}</Text>
-                    </Text>
-                    {parseFloat(payroll.otherBenefits || "0") > 0 && (
-                      <Text style={[styles.payDetail, { color: colors.muted }]}>
-                        Outros: <Text style={{ color: colors.foreground }}>{fmtBRL(payroll.otherBenefits)}</Text>
-                      </Text>
                     )}
                   </View>
-                  <Text style={[styles.payAmount, { color: colors.foreground, marginTop: 6 }]}>Total: {fmtBRL(salaryTotal)}</Text>
-                  {payroll.salaryPaidAt ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
-                      <View style={[styles.paidBadge, { backgroundColor: colors.success + "22" }]}>
-                        <Text style={{ color: colors.success, fontSize: 12, fontWeight: "600" }}>✓ Pago</Text>
-                      </View>
-                      <TouchableOpacity onPress={() => handleUnmark(payroll.id, "salary")}>
-                        <Text style={{ color: colors.muted, fontSize: 12 }}>Desfazer</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => setPayConfirm({ payrollId: payroll.id, type: "salary", name: employee.fullName })}
-                      style={[styles.payBtn, { backgroundColor: colors.primary }]}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>Marcar como Pago</Text>
-                    </TouchableOpacity>
-                  )}
-                  {payroll.pdfUrl && (
-                    <TouchableOpacity
-                      onPress={() => downloadPdf(payroll.pdfUrl, `holerite_${employee.fullName.replace(/\s+/g, "_")}.pdf`)}
-                      style={[styles.downloadBtn, { borderColor: colors.primary, marginTop: 8 }]}
-                    >
-                      <IconSymbol name="arrow.down.doc" size={14} color={colors.primary} />
-                      <Text style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}>Baixar Holerite</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
-              </View>
-            );
-          }}
-        />
+              ))}
+            </View>
+          </View>
+
+        </ScrollView>
       )}
 
       {editPayroll && editMode && (
@@ -1303,6 +1333,13 @@ const styles = StyleSheet.create({
   warnBox: { padding: 12, borderRadius: 10, borderWidth: 1 },
   downloadBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, marginTop: 6, alignSelf: "flex-start" },
   statusBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: "center" },
+  listHeader: { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1, gap: 12 },
+  listHeaderTitle: { fontSize: 15, fontWeight: "700" },
+  listHeaderSub: { fontSize: 12, marginTop: 2 },
+  dayBadge: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  dayBadgeText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  payRowCard: { flexDirection: "row", alignItems: "flex-start", gap: 12, borderRadius: 12, padding: 12, borderWidth: 1 },
+  payBtnSmall: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8, alignItems: "center" },
   infoBox: { padding: 10, borderRadius: 8, borderWidth: 1 },
   monthDownloadSection: { padding: 14, borderTopWidth: 0.5, borderBottomWidth: 0.5 },
   downloadAllBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
