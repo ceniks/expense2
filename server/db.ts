@@ -1367,6 +1367,106 @@ export async function createPendingPayroll(userId: number, data: {
   return { id: result[0].insertId, employeeExists: existing.length > 0 };
 }
 
+/**
+ * Smart upsert when uploading a PDF:
+ * - Employee exists + payroll exists for that month → auto-update (skip pending review)
+ * - Employee has a pending payroll → replace it with new data
+ * - Otherwise → create new pending payroll
+ */
+export async function upsertPayrollFromPdf(
+  userId: number,
+  data: {
+    employeeName: string;
+    position?: string;
+    baseSalary?: string;
+    netSalary?: string;
+    advanceAmount?: string;
+    vtDaily?: string;
+    competenceMonth?: number;
+    competenceYear?: number;
+    rawData?: any;
+    pdfUrl?: string;
+  }
+): Promise<"auto_updated" | "pending_updated" | "pending_created"> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+  if (!groupId) throw new Error("Grupo não encontrado");
+
+  const compMonth = data.competenceMonth ?? new Date().getMonth() + 1;
+  const compYear = data.competenceYear ?? new Date().getFullYear();
+  const paymentMonth = compMonth === 12 ? 1 : compMonth + 1;
+  const paymentYear = compMonth === 12 ? compYear + 1 : compYear;
+  const yearMonth = `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`;
+
+  // Find employee by name in the group
+  const empRows = await db.select({ id: employees.id })
+    .from(employees)
+    .where(and(eq(employees.groupId, groupId), eq(employees.fullName, data.employeeName)))
+    .limit(1);
+
+  if (empRows.length > 0) {
+    const employeeId = empRows[0].id;
+    const payrollRows = await db.select().from(employeePayments)
+      .where(and(eq(employeePayments.employeeId, employeeId), eq(employeePayments.yearMonth, yearMonth)))
+      .limit(1);
+
+    if (payrollRows.length > 0) {
+      // Auto-update existing approved payroll
+      await db.update(employeePayments).set({
+        netSalary: data.netSalary ?? null,
+        advanceAmount: data.advanceAmount ?? null,
+        pdfUrl: data.pdfUrl ?? null,
+      }).where(eq(employeePayments.id, payrollRows[0].id));
+
+      // Remove any stale pending payrolls for this employee
+      await db.delete(pendingPayrolls).where(
+        and(
+          eq(pendingPayrolls.groupId, groupId),
+          eq(pendingPayrolls.employeeName, data.employeeName),
+          eq(pendingPayrolls.status, "pending")
+        )
+      );
+      return "auto_updated";
+    }
+  }
+
+  // Check for existing pending payroll for this employee
+  const existingPending = await db.select({ id: pendingPayrolls.id })
+    .from(pendingPayrolls)
+    .where(and(
+      eq(pendingPayrolls.groupId, groupId),
+      eq(pendingPayrolls.employeeName, data.employeeName),
+      eq(pendingPayrolls.status, "pending")
+    ))
+    .limit(1);
+
+  const pendingValues = {
+    employeeId: empRows.length > 0 ? empRows[0].id : null,
+    position: data.position ?? null,
+    baseSalary: data.baseSalary ?? null,
+    netSalary: data.netSalary ?? null,
+    advanceAmount: data.advanceAmount ?? null,
+    vtDaily: data.vtDaily ?? null,
+    competenceMonth: data.competenceMonth ?? null,
+    competenceYear: data.competenceYear ?? null,
+    rawData: data.rawData ?? null,
+    pdfUrl: data.pdfUrl ?? null,
+  };
+
+  if (existingPending.length > 0) {
+    await db.update(pendingPayrolls).set(pendingValues).where(eq(pendingPayrolls.id, existingPending[0].id));
+    return "pending_updated";
+  }
+
+  await db.insert(pendingPayrolls).values({
+    groupId,
+    employeeName: data.employeeName,
+    ...pendingValues,
+  });
+  return "pending_created";
+}
+
 export async function approvePendingPayroll(
   payrollId: number,
   userId: number,

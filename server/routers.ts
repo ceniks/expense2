@@ -148,7 +148,7 @@ async function extractAllPayrollsFromPdf(pdfBuffer: Buffer, userId: number): Pro
         // If individual extraction fails, fall back to no PDF (not critical)
       }
 
-      await db.createPendingPayroll(userId, {
+      await db.upsertPayrollFromPdf(userId, {
         employeeName: data.employeeName,
         position: data.position,
         baseSalary: String(data.baseSalary),
