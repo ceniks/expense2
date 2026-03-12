@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(tabs\\\\\\)/)"
+    ]
+  }
+}

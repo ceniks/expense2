@@ -19,14 +19,19 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: isWeb
-          ? { display: "none" } // Hide tab bar on web — sidebar handles navigation
+          ? { display: "none" }
           : {
               paddingTop: 8,
               paddingBottom: bottomPadding,
               height: tabBarHeight,
               backgroundColor: colors.surface,
               borderTopColor: colors.border,
-              borderTopWidth: 0.5,
+              borderTopWidth: 1,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.06,
+              shadowRadius: 12,
+              elevation: 16,
             },
         sceneStyle: isWeb ? { marginLeft: 0 } : undefined,
       }}

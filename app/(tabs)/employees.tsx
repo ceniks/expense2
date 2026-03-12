@@ -38,6 +38,27 @@ type Tab = "employees" | "payroll" | "payslip";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+async function downloadPdf(url: string, fileName: string) {
+  if (Platform.OS === "web") {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      Linking.openURL(url);
+    }
+  } else {
+    Linking.openURL(url);
+  }
+}
+
 function fmtBRL(value: string | number | null | undefined): string {
   const n = parseFloat(String(value ?? "0")) || 0;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -750,7 +771,7 @@ function PayrollTab() {
                   )}
                   {payroll.pdfUrl && (
                     <TouchableOpacity
-                      onPress={() => Linking.openURL(payroll.pdfUrl)}
+                      onPress={() => downloadPdf(payroll.pdfUrl, `holerite_${employee.fullName.replace(/\s+/g, "_")}.pdf`)}
                       style={[styles.downloadBtn, { borderColor: colors.primary, marginTop: 8 }]}
                     >
                       <IconSymbol name="arrow.down.doc" size={14} color={colors.primary} />
@@ -943,8 +964,9 @@ function PayslipTab() {
 
   const handleDownloadAll = async () => {
     for (const r of availableDownloads) {
-      await Linking.openURL(r.payroll.pdfUrl);
-      await new Promise((res) => setTimeout(res, 400));
+      const name = `holerite_${r.employee.fullName.replace(/\s+/g, "_")}_${downloadMonth}.pdf`;
+      await downloadPdf(r.payroll.pdfUrl, name);
+      await new Promise((res) => setTimeout(res, 300));
     }
   };
 
@@ -1090,7 +1112,7 @@ function PayslipTab() {
                   {r.employee.role ? <Text style={{ color: colors.muted, fontSize: 12 }}>{r.employee.role}</Text> : null}
                 </View>
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(r.payroll.pdfUrl)}
+                  onPress={() => downloadPdf(r.payroll.pdfUrl, `holerite_${r.employee.fullName.replace(/\s+/g, "_")}_${downloadMonth}.pdf`)}
                   style={[styles.downloadBtn, { borderColor: colors.primary }]}
                 >
                   <IconSymbol name="arrow.down.doc" size={13} color={colors.primary} />
@@ -1155,7 +1177,7 @@ function PayslipTab() {
               </View>
               {item.pdfUrl && (
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(item.pdfUrl)}
+                  onPress={() => downloadPdf(item.pdfUrl, `holerite_${item.employeeName.replace(/\s+/g, "_")}.pdf`)}
                   style={[styles.downloadBtn, { borderColor: colors.primary }]}
                 >
                   <IconSymbol name="arrow.down.doc" size={14} color={colors.primary} />
