@@ -1682,30 +1682,24 @@ export async function insertStatementRows(userId: number, importId: number, acco
   if (!db) throw new Error("Database not available");
   const groupId = await getUserGroupId(userId);
   if (rows.length === 0) return;
-  // Créditos (entradas) são ignorados automaticamente — não geram despesa
+
+  // Passo 1: inserir tudo como pending para poder fazer detecção de transferências
   await db.insert(statementRows).values(
-    rows.map((r) => ({
-      ...r,
-      userId,
-      groupId,
-      importId,
-      accountId,
-      status: r.type === "credit" ? "ignored" : "pending",
-    }))
+    rows.map((r) => ({ ...r, userId, groupId, importId, accountId, status: "pending" }))
   );
 
-  // Detectar transferências: mesmo usuário, mesma data, mesmo valor, tipos opostos, contas diferentes
+  // Passo 2: detectar transferências — mesmo usuário, mesma data, mesmo valor, tipos opostos, contas diferentes
+  // Busca as linhas recém inseridas + todas as outras pendentes do usuário (outras contas/imports)
   const inserted = await db.select()
     .from(statementRows)
     .where(and(eq(statementRows.userId, userId), eq(statementRows.importId, importId)));
 
-  // Buscar todas as linhas pendentes do usuário de outros imports (outras contas)
   const otherRows = await db.select()
     .from(statementRows)
     .where(and(eq(statementRows.userId, userId), eq(statementRows.status, "pending")));
 
   for (const row of inserted) {
-    if (row.isTransfer) continue; // já marcado
+    if (row.isTransfer) continue;
     const oppositeType = row.type === "debit" ? "credit" : "debit";
     const pair = otherRows.find(
       (r) =>
@@ -1721,6 +1715,18 @@ export async function insertStatementRows(userId: number, importId: number, acco
       await db.update(statementRows).set({ isTransfer: true, transferPairId: row.id }).where(eq(statementRows.id, pair.id));
     }
   }
+
+  // Passo 3: ignorar automaticamente créditos (não rastreamos receita aqui) e débitos de transferência
+  // Créditos que são transferência: ambos os lados ignorados (movimento interno entre contas)
+  // Créditos que NÃO são transferência: ignorados (sem rastreamento de receita)
+  // Débitos que são transferência: ignorados (saída de uma conta entrou em outra — não é despesa)
+  await db.update(statementRows)
+    .set({ status: "ignored" })
+    .where(and(
+      eq(statementRows.importId, importId),
+      eq(statementRows.userId, userId),
+      sql`(type = 'credit' OR isTransfer = true)`,
+    ));
 }
 
 export async function listPendingStatementRows(userId: number, importId: number) {
