@@ -1402,7 +1402,10 @@ export async function approvePendingPayroll(
   const workingDays = overrides.workingDays ?? 22;
   const competenceMonth = overrides.competenceMonth ?? pending.competenceMonth ?? new Date().getMonth() + 1;
   const competenceYear = overrides.competenceYear ?? pending.competenceYear ?? new Date().getFullYear();
-  const yearMonth = `${competenceYear}-${String(competenceMonth).padStart(2, "0")}`;
+  // O holerite do mês N é pago no mês N+1
+  const paymentMonth = competenceMonth === 12 ? 1 : competenceMonth + 1;
+  const paymentYear = competenceMonth === 12 ? competenceYear + 1 : competenceYear;
+  const yearMonth = `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`;
 
   // Find or create employee
   let employeeId = pending.employeeId;
