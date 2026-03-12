@@ -7,7 +7,8 @@
       "Read(//opt/homebrew/bin/**)",
       "Bash(command -v node)",
       "Bash(ls /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/drizzle/*.sql)",
-      "Bash(head -20 /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(tabs\\\\\\)/settings.tsx)"
+      "Bash(head -20 /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(tabs\\\\\\)/settings.tsx)",
+      "Bash(grep -n \"categories\\\\|profile\\\\|getCategoriesByProfile\" /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(payment\\\\\\)/[id].tsx)"
     ]
   }
 }

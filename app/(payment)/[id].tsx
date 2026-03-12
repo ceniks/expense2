@@ -11,7 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
@@ -32,7 +32,7 @@ export default function PaymentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const colors = useColors();
-  const { payments, updatePayment, deletePayment, categories } = usePayments();
+  const { payments, updatePayment, deletePayment, categories, getCategoriesByProfile } = usePayments();
 
   const payment = payments.find((p) => p.id === id);
 
@@ -57,6 +57,11 @@ export default function PaymentDetailScreen() {
       </ScreenContainer>
     );
   }
+
+  const profileCategories = useMemo(
+    () => getCategoriesByProfile(profile as "Pessoal" | "Empresa"),
+    [profile, categories]
+  );
 
   const catColor = getCategoryColor(categories, payment?.category ?? "");
 
@@ -256,7 +261,7 @@ export default function PaymentDetailScreen() {
               <View style={styles.fieldGroup}>
                 <Text style={[styles.label, { color: colors.muted }]}>Categoria</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {categories.map((cat) => (
+                  {profileCategories.map((cat) => (
                     <Pressable
                       key={cat.id}
                       onPress={() => setCategory(cat.name)}
