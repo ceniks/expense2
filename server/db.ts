@@ -1268,8 +1268,11 @@ export async function markSalaryPaid(payrollId: number, userId: number, paidDate
   const emp = empRows[0];
 
   const groupId = await getUserGroupId(userId);
-  const vtTotal = (parseFloat(payroll.vtDaily) * payroll.workingDays).toFixed(2);
-  const vaTotal = (parseFloat(payroll.vaDaily) * payroll.workingDays).toFixed(2);
+  // Always use VT/VA from employee registration, not from stored payroll record
+  const vtDaily = emp.vtDaily ?? payroll.vtDaily ?? "0";
+  const vaDaily = emp.vaDaily ?? payroll.vaDaily ?? "0";
+  const vtTotal = (parseFloat(vtDaily) * payroll.workingDays).toFixed(2);
+  const vaTotal = (parseFloat(vaDaily) * payroll.workingDays).toFixed(2);
   const totalSalary = (
     parseFloat(payroll.netSalary) +
     parseFloat(vtTotal) +
@@ -1286,7 +1289,7 @@ export async function markSalaryPaid(payrollId: number, userId: number, paidDate
     date: paidDate,
     category: "Salários",
     profile: "Empresa",
-    notes: `Funcionário: ${emp.fullName} | Líquido: R$ ${payroll.netSalary} | VT: R$ ${vtTotal} | VA: R$ ${vaTotal} | Outros: R$ ${payroll.otherBenefits} | Chave PIX: ${emp.pixKey}`,
+    notes: `Funcionário: ${emp.fullName} | Líquido: R$ ${payroll.netSalary} | VT: R$ ${vtTotal} (R$ ${vtDaily}/dia × ${payroll.workingDays}d) | VA: R$ ${vaTotal} (R$ ${vaDaily}/dia × ${payroll.workingDays}d) | Outros: R$ ${payroll.otherBenefits} | Chave PIX: ${emp.pixKey}`,
   });
   const paymentId = payResult[0].insertId;
   await db.update(employeePayments).set({ salaryPaidAt: new Date(), salaryPaymentId: paymentId }).where(eq(employeePayments.id, payrollId));
