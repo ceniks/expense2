@@ -899,11 +899,12 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         baseSalary: z.string().default("0"),
         admissionDate: z.string().default(""),
         pixKey: z.string().default(""),
+        email: z.string().email().optional().or(z.literal("")),
         vtDaily: z.string().default("0"),
         vaDaily: z.string().default("0"),
         notes: z.string().optional(),
       }))
-      .mutation(({ ctx, input }) => db.createEmployee(ctx.user.id, input)),
+      .mutation(({ ctx, input }) => db.createEmployee(ctx.user.id, { ...input, email: input.email || undefined })),
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -912,18 +913,75 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         baseSalary: z.string().optional(),
         admissionDate: z.string().optional(),
         pixKey: z.string().optional(),
+        email: z.string().email().nullable().optional().or(z.literal("")),
         vtDaily: z.string().optional(),
         vaDaily: z.string().optional(),
         notes: z.string().nullable().optional(),
         isActive: z.boolean().optional(),
       }))
       .mutation(({ ctx, input }) => {
-        const { id, ...data } = input;
-        return db.updateEmployee(id, ctx.user.id, data);
+        const { id, email, ...data } = input;
+        return db.updateEmployee(id, ctx.user.id, { ...data, email: email === "" ? null : email });
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ ctx, input }) => db.deleteEmployee(input.id, ctx.user.id)),
+    sendPayslipEmails: protectedProcedure
+      .input(z.object({ yearMonth: z.string().regex(/^\d{4}-\d{2}$/) }))
+      .mutation(async ({ ctx, input }) => {
+        const payslips = await db.getPayslipsForMonth(ctx.user.id, input.yearMonth);
+
+        const mailgunApiKey = process.env.MAILGUN_API_KEY;
+        const mailgunDomain = process.env.MAILGUN_DOMAIN;
+        const mailgunFrom = process.env.MAILGUN_FROM ?? `holerites@${mailgunDomain}`;
+
+        if (!mailgunApiKey || !mailgunDomain) {
+          throw new Error("MAILGUN_API_KEY e MAILGUN_DOMAIN não configurados.");
+        }
+
+        const [year, month] = input.yearMonth.split("-");
+        const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+        const monthLabel = `${monthNames[parseInt(month) - 1]}/${year}`;
+
+        const results: { name: string; email: string; status: "sent" | "no_email" | "no_pdf" | "error"; error?: string }[] = [];
+
+        for (const p of payslips) {
+          if (!p.email) { results.push({ name: p.fullName, email: "", status: "no_email" }); continue; }
+          if (!p.pdfUrl) { results.push({ name: p.fullName, email: p.email, status: "no_pdf" }); continue; }
+
+          try {
+            // Download PDF from storage URL
+            const pdfRes = await fetch(p.pdfUrl);
+            if (!pdfRes.ok) throw new Error(`Falha ao baixar PDF: ${pdfRes.status}`);
+            const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+
+            // Build multipart form for Mailgun
+            const form = new FormData();
+            form.append("from", mailgunFrom);
+            form.append("to", p.email);
+            form.append("subject", `Holerite ${monthLabel} - ${p.fullName}`);
+            form.append("text", `Olá ${p.fullName},\n\nSegue em anexo seu holerite referente ao mês de ${monthLabel}.\n\nAtenciosamente.`);
+            form.append("attachment", new Blob([pdfBuffer], { type: "application/pdf" }), `holerite_${input.yearMonth}.pdf`);
+
+            const mgRes = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
+              method: "POST",
+              headers: { Authorization: `Basic ${Buffer.from(`api:${mailgunApiKey}`).toString("base64")}` },
+              body: form,
+            });
+
+            if (!mgRes.ok) {
+              const errText = await mgRes.text();
+              throw new Error(errText);
+            }
+
+            results.push({ name: p.fullName, email: p.email, status: "sent" });
+          } catch (err: any) {
+            results.push({ name: p.fullName, email: p.email, status: "error", error: err?.message });
+          }
+        }
+
+        return results;
+      }),
   }),
 
   // ─── Folha de Pagamento ───────────────────────────────────────────────────────
@@ -1056,21 +1114,79 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         let rows: { date: string; description: string; amount: string; type: "debit" | "credit" }[] = [];
 
         if (input.fileType === "csv") {
-          // Parse CSV simples
-          const text = fileBuffer.toString("utf-8");
+          // Parse CSV - suporta múltiplos formatos (PagSeguro, genérico)
+          const text = fileBuffer.toString("utf-8").replace(/\r/g, "");
           const lines = text.split("\n").filter((l) => l.trim());
-          // Pula cabeçalho
+          if (lines.length < 2) throw new Error("CSV vazio ou sem dados.");
+
+          // Detectar separador (ponto-e-vírgula ou vírgula)
+          const sep = lines[0].includes(";") ? ";" : ",";
+
+          // Ler cabeçalho para detectar formato
+          const header = lines[0].split(sep).map((c) => c.trim().replace(/"/g, "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+
+          // Detectar índices das colunas pelo cabeçalho
+          const findCol = (...names: string[]) => {
+            for (const name of names) {
+              const idx = header.findIndex((h) => h.includes(name));
+              if (idx >= 0) return idx;
+            }
+            return -1;
+          };
+
+          const dateIdx   = findCol("DATA", "DATE", "DT");
+          const descIdx   = findCol("DESCRICAO", "DESCRIPTION", "HISTORICO", "DESCRI");
+          const amtIdx    = findCol("VALOR", "AMOUNT", "VALUE", "MONTANTE");
+          const typeIdx   = findCol("TIPO", "TYPE");
+
+          // Fallback: assume posições genéricas (data, desc, valor)
+          const colDate = dateIdx >= 0 ? dateIdx : 0;
+          const colDesc = descIdx >= 0 ? descIdx : 1;
+          const colAmt  = amtIdx  >= 0 ? amtIdx  : 2;
+          const colType = typeIdx >= 0 ? typeIdx : -1;
+
           for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(";").map((c) => c.trim().replace(/"/g, ""));
-            if (cols.length < 3) continue;
-            const [date, description, amountStr] = cols;
-            const amount = parseFloat(amountStr.replace(",", "."));
-            if (isNaN(amount) || !date || !description) continue;
+            const cols = lines[i].split(sep).map((c) => c.trim().replace(/"/g, ""));
+            if (cols.length <= Math.max(colDate, colDesc, colAmt)) continue;
+
+            const rawDate = cols[colDate];
+            const description = cols[colDesc];
+            let amountStr = cols[colAmt];
+
+            // Remover espaços e normalizar número BR (1.234,56 → 1234.56)
+            amountStr = amountStr.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+            const amount = parseFloat(amountStr);
+            if (isNaN(amount) || !rawDate || !description) continue;
+
+            // Converter data DD/MM/YYYY → YYYY-MM-DD
+            let dateFormatted = rawDate;
+            if (rawDate.includes("/")) {
+              const parts = rawDate.split("/");
+              if (parts.length === 3) {
+                dateFormatted = parts[2].length === 4
+                  ? `${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`
+                  : `${parts[0]}-${parts[1].padStart(2,"0")}-${parts[2].padStart(2,"0")}`;
+              }
+            }
+
+            // Determinar tipo: usa coluna TIPO se existir (PagSeguro), senão pelo sinal do valor
+            let type: "debit" | "credit";
+            if (colType >= 0 && cols[colType]) {
+              const tipoVal = cols[colType].toLowerCase();
+              type = (tipoVal.includes("receb") || tipoVal.includes("credit") || tipoVal.includes("venda") || tipoVal.includes("resgate") || tipoVal.includes("rendimento") || tipoVal.includes("desbloqueado") || tipoVal.includes("estorno pix") || tipoVal.includes("renda fixa"))
+                ? "credit" : "debit";
+              // Se valor é negativo, sempre debit
+              if (amount < 0) type = "debit";
+              if (amount > 0 && type === "debit" && !tipoVal.includes("cancelamento") && !tipoVal.includes("ajuste") && !tipoVal.includes("bloqueio")) type = "credit";
+            } else {
+              type = amount < 0 ? "debit" : "credit";
+            }
+
             rows.push({
-              date: date.includes("/") ? date.split("/").reverse().join("-") : date,
+              date: dateFormatted,
               description,
               amount: Math.abs(amount).toFixed(2),
-              type: amount < 0 ? "debit" : "credit",
+              type,
             });
           }
         } else {

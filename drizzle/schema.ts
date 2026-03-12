@@ -227,6 +227,7 @@ export const employees = mysqlTable("employees", {
   baseSalary: decimal("baseSalary", { precision: 12, scale: 2 }).notNull().default("0"),
   admissionDate: varchar("admissionDate", { length: 10 }).notNull().default(""),
   pixKey: varchar("pixKey", { length: 300 }).notNull().default(""),
+  email: varchar("email", { length: 300 }),
   vtDaily: decimal("vtDaily", { precision: 8, scale: 2 }).notNull().default("0"),
   vaDaily: decimal("vaDaily", { precision: 8, scale: 2 }).notNull().default("0"),
   isActive: boolean("isActive").notNull().default(true),

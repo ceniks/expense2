@@ -1112,6 +1112,7 @@ export async function createEmployee(userId: number, data: {
   baseSalary: string;
   admissionDate: string;
   pixKey: string;
+  email?: string;
   vtDaily?: string;
   vaDaily?: string;
   notes?: string;
@@ -1127,6 +1128,7 @@ export async function createEmployee(userId: number, data: {
     baseSalary: data.baseSalary,
     admissionDate: data.admissionDate,
     pixKey: data.pixKey,
+    email: data.email ?? null,
     vtDaily: data.vtDaily ?? "0",
     vaDaily: data.vaDaily ?? "0",
     notes: data.notes ?? null,
@@ -1140,6 +1142,7 @@ export async function updateEmployee(employeeId: number, userId: number, data: {
   baseSalary?: string;
   admissionDate?: string;
   pixKey?: string;
+  email?: string | null;
   vtDaily?: string;
   vaDaily?: string;
   notes?: string | null;
@@ -1784,4 +1787,32 @@ export async function approveAllStatementRows(importId: number, userId: number) 
   }
   await db.update(bankStatementImports).set({ imported: count }).where(eq(bankStatementImports.id, importId));
   return count;
+}
+
+// ─── Enviar Holerites por Email ────────────────────────────────────────────────
+
+export async function getPayslipsForMonth(userId: number, yearMonth: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const groupId = await getUserGroupId(userId);
+
+  const rows = groupId
+    ? await db
+        .select({ emp: employees, payroll: employeePayments })
+        .from(employeePayments)
+        .innerJoin(employees, eq(employees.id, employeePayments.employeeId))
+        .where(and(eq(employeePayments.groupId, groupId), eq(employeePayments.yearMonth, yearMonth)))
+    : await db
+        .select({ emp: employees, payroll: employeePayments })
+        .from(employeePayments)
+        .innerJoin(employees, eq(employees.id, employeePayments.employeeId))
+        .where(and(eq(employeePayments.userId, userId), eq(employeePayments.yearMonth, yearMonth)));
+
+  return rows.map((r) => ({
+    employeeId: r.emp.id,
+    fullName: r.emp.fullName,
+    email: r.emp.email ?? null,
+    pdfUrl: r.payroll.pdfUrl ?? null,
+    yearMonth: r.payroll.yearMonth,
+  }));
 }

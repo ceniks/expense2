@@ -30,6 +30,7 @@ type Employee = {
   baseSalary: string;
   admissionDate: string;
   pixKey: string;
+  email: string | null;
   notes: string | null;
   isActive: boolean;
 };
@@ -99,6 +100,7 @@ function EmployeeFormModal({
   const [baseSalary, setBaseSalary] = useState(employee?.baseSalary ?? "");
   const [admissionDate, setAdmissionDate] = useState(employee?.admissionDate ?? "");
   const [pixKey, setPixKey] = useState(employee?.pixKey ?? "");
+  const [email, setEmail] = useState(employee?.email ?? "");
   const [vtDaily, setVtDaily] = useState((employee as any)?.vtDaily ?? "0");
   const [vaDaily, setVaDaily] = useState((employee as any)?.vaDaily ?? "0");
   const [notes, setNotes] = useState(employee?.notes ?? "");
@@ -111,6 +113,7 @@ function EmployeeFormModal({
       setBaseSalary(employee?.baseSalary ?? "");
       setAdmissionDate(employee?.admissionDate ?? "");
       setPixKey(employee?.pixKey ?? "");
+      setEmail(employee?.email ?? "");
       setVtDaily((employee as any)?.vtDaily ?? "0");
       setVaDaily((employee as any)?.vaDaily ?? "0");
       setNotes(employee?.notes ?? "");
@@ -135,6 +138,7 @@ function EmployeeFormModal({
           baseSalary: baseSalary.replace(",", "."),
           admissionDate: admissionDate.trim(),
           pixKey: pixKey.trim(),
+          email: email.trim() || null,
           vtDaily: vtDaily.replace(",", "."),
           vaDaily: vaDaily.replace(",", "."),
           notes: notes.trim() || null,
@@ -147,6 +151,7 @@ function EmployeeFormModal({
           baseSalary: baseSalary.replace(",", "."),
           admissionDate: admissionDate.trim(),
           pixKey: pixKey.trim(),
+          email: email.trim() || undefined,
           vtDaily: vtDaily.replace(",", "."),
           vaDaily: vaDaily.replace(",", "."),
           notes: notes.trim() || undefined,
@@ -231,6 +236,18 @@ function EmployeeFormModal({
               placeholderTextColor={colors.muted}
               style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]}
               autoCapitalize="none"
+            />
+          </View>
+          <View style={{ gap: 4 }}>
+            <Text style={[styles.label, { color: colors.muted }]}>E-mail (holerite)</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="email@exemplo.com"
+              placeholderTextColor={colors.muted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]}
             />
           </View>
           <View style={{ flexDirection: "row", gap: 12 }}>
@@ -966,12 +983,14 @@ function PayslipTab() {
   const [uploadResult, setUploadResult] = useState<{ processed: number; total: number; errors: string[] } | null>(null);
   const [approveTarget, setApproveTarget] = useState<any | null>(null);
   const [downloadMonth, setDownloadMonth] = useState(currentYearMonth());
+  const [sendingEmails, setSendingEmails] = useState(false);
 
   const { data: pending = [], refetch } = trpc.pendingPayrolls.list.useQuery();
   const { data: monthPayrolls = [] } = trpc.payroll.listMonth.useQuery({ yearMonth: downloadMonth });
   const uploadMut = trpc.pendingPayrolls.uploadPdf.useMutation();
   const approveMut = trpc.pendingPayrolls.approve.useMutation();
   const rejectMut = trpc.pendingPayrolls.reject.useMutation();
+  const sendEmailsMut = trpc.employees.sendPayslipEmails.useMutation();
 
   const availableDownloads = (monthPayrolls as any[]).filter((r) => r.payroll?.pdfUrl);
 
@@ -989,6 +1008,42 @@ function PayslipTab() {
       await downloadPdf(r.payroll.pdfUrl, name);
       await new Promise((res) => setTimeout(res, 300));
     }
+  };
+
+  const handleSendEmails = async () => {
+    if (availableDownloads.length === 0) {
+      Alert.alert("Sem holerites", "Nenhum holerite disponível para este mês.");
+      return;
+    }
+    Alert.alert(
+      "Enviar Holerites por Email",
+      `Enviar holerites de ${monthLabel(downloadMonth)} para os funcionários cadastrados com email?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Enviar",
+          onPress: async () => {
+            setSendingEmails(true);
+            try {
+              const results = await sendEmailsMut.mutateAsync({ yearMonth: downloadMonth });
+              const sent = results.filter((r: any) => r.status === "sent").length;
+              const noEmail = results.filter((r: any) => r.status === "no_email").length;
+              const noPdf = results.filter((r: any) => r.status === "no_pdf").length;
+              const errors = results.filter((r: any) => r.status === "error").length;
+              let msg = `Enviados: ${sent}`;
+              if (noEmail) msg += `\nSem email cadastrado: ${noEmail}`;
+              if (noPdf) msg += `\nSem holerite: ${noPdf}`;
+              if (errors) msg += `\nErros: ${errors}`;
+              Alert.alert("Envio concluído", msg);
+            } catch (err: any) {
+              Alert.alert("Erro", err?.message ?? "Falha ao enviar emails.");
+            } finally {
+              setSendingEmails(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handlePickPdf = async () => {
@@ -1106,12 +1161,27 @@ function PayslipTab() {
       <View style={[styles.monthDownloadSection, { borderBottomColor: colors.border, borderTopColor: colors.border }]}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <Text style={[styles.paySectionTitle, { color: colors.foreground }]}>Holerites por Mês</Text>
-          {availableDownloads.length > 0 && (
-            <TouchableOpacity onPress={handleDownloadAll} style={[styles.downloadAllBtn, { backgroundColor: colors.primary }]}>
-              <IconSymbol name="arrow.down.doc" size={14} color="#fff" />
-              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>Baixar Todos ({availableDownloads.length})</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {availableDownloads.length > 0 && (
+              <TouchableOpacity onPress={handleDownloadAll} style={[styles.downloadAllBtn, { backgroundColor: colors.primary }]}>
+                <IconSymbol name="arrow.down.doc" size={14} color="#fff" />
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>Baixar Todos ({availableDownloads.length})</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={handleSendEmails}
+              disabled={sendingEmails}
+              style={[styles.downloadAllBtn, { backgroundColor: sendingEmails ? colors.muted : "#10b981" }]}
+            >
+              {sendingEmails
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <>
+                    <IconSymbol name="envelope.fill" size={14} color="#fff" />
+                    <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>Enviar por Email</Text>
+                  </>
+              }
             </TouchableOpacity>
-          )}
+          </View>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 10 }}>
           <TouchableOpacity onPress={() => changeDownloadMonth(-1)} style={styles.monthBtn}>
