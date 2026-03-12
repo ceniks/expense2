@@ -913,6 +913,7 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         vtDaily: z.string().optional(),
         vaDaily: z.string().optional(),
         notes: z.string().nullable().optional(),
+        isActive: z.boolean().optional(),
       }))
       .mutation(({ ctx, input }) => {
         const { id, ...data } = input;

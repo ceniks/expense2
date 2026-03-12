@@ -31,6 +31,7 @@ type Employee = {
   admissionDate: string;
   pixKey: string;
   notes: string | null;
+  isActive: boolean;
 };
 
 type Tab = "employees" | "payroll" | "payslip";
@@ -80,6 +81,7 @@ function EmployeeFormModal({
   const [vtDaily, setVtDaily] = useState((employee as any)?.vtDaily ?? "0");
   const [vaDaily, setVaDaily] = useState((employee as any)?.vaDaily ?? "0");
   const [notes, setNotes] = useState(employee?.notes ?? "");
+  const [isActive, setIsActive] = useState(employee ? (employee.isActive !== false) : true);
 
   React.useEffect(() => {
     if (visible) {
@@ -91,6 +93,7 @@ function EmployeeFormModal({
       setVtDaily((employee as any)?.vtDaily ?? "0");
       setVaDaily((employee as any)?.vaDaily ?? "0");
       setNotes(employee?.notes ?? "");
+      setIsActive(employee ? (employee.isActive !== false) : true);
     }
   }, [visible, employee]);
 
@@ -114,6 +117,7 @@ function EmployeeFormModal({
           vtDaily: vtDaily.replace(",", "."),
           vaDaily: vaDaily.replace(",", "."),
           notes: notes.trim() || null,
+          isActive,
         });
       } else {
         await createMut.mutateAsync({
@@ -233,6 +237,23 @@ function EmployeeFormModal({
             </View>
           </View>
           <View style={{ gap: 4 }}>
+            <Text style={[styles.label, { color: colors.muted }]}>Status</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => setIsActive(true)}
+                style={[styles.statusBtn, { backgroundColor: isActive ? colors.success : colors.surface, borderColor: isActive ? colors.success : colors.border }]}
+              >
+                <Text style={{ color: isActive ? "#fff" : colors.muted, fontWeight: "600", fontSize: 14 }}>Ativo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setIsActive(false)}
+                style={[styles.statusBtn, { backgroundColor: !isActive ? colors.error : colors.surface, borderColor: !isActive ? colors.error : colors.border }]}
+              >
+                <Text style={{ color: !isActive ? "#fff" : colors.muted, fontWeight: "600", fontSize: 14 }}>Inativo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={{ gap: 4 }}>
             <Text style={[styles.label, { color: colors.muted }]}>Observações</Text>
             <TextInput
               value={notes}
@@ -292,6 +313,7 @@ function DeleteConfirmModal({
 function EmployeesTab() {
   const colors = useColors();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [formVisible, setFormVisible] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
@@ -299,10 +321,12 @@ function EmployeesTab() {
   const { data: employees = [], refetch, isLoading } = trpc.employees.list.useQuery();
   const deleteMut = trpc.employees.delete.useMutation();
 
-  const filtered = (employees as Employee[]).filter((e) =>
-    e.fullName.toLowerCase().includes(search.toLowerCase()) ||
-    e.role.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = (employees as Employee[]).filter((e) => {
+    const matchSearch = e.fullName.toLowerCase().includes(search.toLowerCase()) ||
+      e.role.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "all" || (statusFilter === "active" ? e.isActive !== false : e.isActive === false);
+    return matchSearch && matchStatus;
+  });
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -340,6 +364,21 @@ function EmployeesTab() {
           <IconSymbol name="plus" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
+      <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
+        {(["active", "inactive", "all"] as const).map((f) => {
+          const labels = { active: "Ativos", inactive: "Inativos", all: "Todos" };
+          const isSelected = statusFilter === f;
+          return (
+            <TouchableOpacity
+              key={f}
+              onPress={() => setStatusFilter(f)}
+              style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary + "22" : "transparent" }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: "600", color: isSelected ? colors.primary : colors.muted }}>{labels[f]}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {isLoading ? (
         <View style={styles.center}>
@@ -368,7 +407,14 @@ function EmployeesTab() {
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.cardName, { color: colors.foreground }]}>{item.fullName}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={[styles.cardName, { color: colors.foreground, flex: 1 }]}>{item.fullName}</Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: item.isActive !== false ? colors.success + "22" : colors.error + "22" }}>
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: item.isActive !== false ? colors.success : colors.error }}>
+                      {item.isActive !== false ? "ATIVO" : "INATIVO"}
+                    </Text>
+                  </View>
+                </View>
                 {item.role ? <Text style={[styles.cardRole, { color: colors.muted }]}>{item.role}</Text> : null}
                 <View style={{ flexDirection: "row", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
                   <Text style={[styles.cardDetail, { color: colors.muted }]}>
@@ -508,19 +554,14 @@ function EditPayrollModal({
                   style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
               </View>
               <View style={{ gap: 4 }}>
-                <Text style={[styles.label, { color: colors.muted }]}>VT Diário (R$)</Text>
-                <TextInput value={vtDaily} onChangeText={setVtDaily} keyboardType="decimal-pad"
-                  style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
-              </View>
-              <View style={{ gap: 4 }}>
-                <Text style={[styles.label, { color: colors.muted }]}>VA Diário (R$)</Text>
-                <TextInput value={vaDaily} onChangeText={setVaDaily} keyboardType="decimal-pad"
-                  style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
-              </View>
-              <View style={{ gap: 4 }}>
                 <Text style={[styles.label, { color: colors.muted }]}>Dias Úteis</Text>
                 <TextInput value={workingDays} onChangeText={setWorkingDays} keyboardType="number-pad"
                   style={[styles.input, { backgroundColor: colors.surface, color: colors.foreground, borderColor: colors.border }]} />
+              </View>
+              <View style={[styles.infoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  VT ({fmtBRL(vtDaily)}/dia) e VA ({fmtBRL(vaDaily)}/dia) são puxados do cadastro do funcionário.
+                </Text>
               </View>
               <View style={{ gap: 4 }}>
                 <Text style={[styles.label, { color: colors.muted }]}>Outros Benefícios (R$)</Text>
@@ -882,11 +923,30 @@ function PayslipTab() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ processed: number; total: number; errors: string[] } | null>(null);
   const [approveTarget, setApproveTarget] = useState<any | null>(null);
+  const [downloadMonth, setDownloadMonth] = useState(currentYearMonth());
 
   const { data: pending = [], refetch } = trpc.pendingPayrolls.list.useQuery();
+  const { data: monthPayrolls = [] } = trpc.payroll.listMonth.useQuery({ yearMonth: downloadMonth });
   const uploadMut = trpc.pendingPayrolls.uploadPdf.useMutation();
   const approveMut = trpc.pendingPayrolls.approve.useMutation();
   const rejectMut = trpc.pendingPayrolls.reject.useMutation();
+
+  const availableDownloads = (monthPayrolls as any[]).filter((r) => r.payroll?.pdfUrl);
+
+  const changeDownloadMonth = (delta: number) => {
+    const [y, m] = downloadMonth.split("-").map(Number);
+    let nm = m + delta, ny = y;
+    if (nm < 1) { nm = 12; ny--; }
+    if (nm > 12) { nm = 1; ny++; }
+    setDownloadMonth(`${ny}-${String(nm).padStart(2, "0")}`);
+  };
+
+  const handleDownloadAll = async () => {
+    for (const r of availableDownloads) {
+      await Linking.openURL(r.payroll.pdfUrl);
+      await new Promise((res) => setTimeout(res, 400));
+    }
+  };
 
   const handlePickPdf = async () => {
     try {
@@ -999,6 +1059,50 @@ function PayslipTab() {
         )}
       </View>
 
+      {/* ── Holerites por Mês ── */}
+      <View style={[styles.monthDownloadSection, { borderBottomColor: colors.border, borderTopColor: colors.border }]}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <Text style={[styles.paySectionTitle, { color: colors.foreground }]}>Holerites por Mês</Text>
+          {availableDownloads.length > 0 && (
+            <TouchableOpacity onPress={handleDownloadAll} style={[styles.downloadAllBtn, { backgroundColor: colors.primary }]}>
+              <IconSymbol name="arrow.down.doc" size={14} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>Baixar Todos ({availableDownloads.length})</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 10 }}>
+          <TouchableOpacity onPress={() => changeDownloadMonth(-1)} style={styles.monthBtn}>
+            <IconSymbol name="chevron.left" size={18} color={colors.primary} />
+          </TouchableOpacity>
+          <Text style={[styles.monthLabel, { color: colors.foreground, fontSize: 15 }]}>{monthLabel(downloadMonth)}</Text>
+          <TouchableOpacity onPress={() => changeDownloadMonth(1)} style={styles.monthBtn}>
+            <IconSymbol name="chevron.right" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        {availableDownloads.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center" }}>Nenhum holerite disponível para {monthLabel(downloadMonth)}</Text>
+        ) : (
+          <View style={{ gap: 6 }}>
+            {availableDownloads.map((r: any) => (
+              <View key={r.employee.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
+                <View>
+                  <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>{r.employee.fullName}</Text>
+                  {r.employee.role ? <Text style={{ color: colors.muted, fontSize: 12 }}>{r.employee.role}</Text> : null}
+                </View>
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(r.payroll.pdfUrl)}
+                  style={[styles.downloadBtn, { borderColor: colors.primary }]}
+                >
+                  <IconSymbol name="arrow.down.doc" size={13} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: "600", fontSize: 12 }}>Baixar</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* ── Pendentes de Revisão ── */}
       {(pending as any[]).length === 0 ? (
         <View style={styles.center}>
           <IconSymbol name="doc.text.fill" size={48} color={colors.border} />
@@ -1176,4 +1280,8 @@ const styles = StyleSheet.create({
   newBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   warnBox: { padding: 12, borderRadius: 10, borderWidth: 1 },
   downloadBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, marginTop: 6, alignSelf: "flex-start" },
+  statusBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: "center" },
+  infoBox: { padding: 10, borderRadius: 8, borderWidth: 1 },
+  monthDownloadSection: { padding: 14, borderTopWidth: 0.5, borderBottomWidth: 0.5 },
+  downloadAllBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
 });

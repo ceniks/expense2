@@ -1204,7 +1204,8 @@ export async function listMonthlyPayroll(userId: number, yearMonth: string) {
   const results = [];
   for (const emp of empRows) {
     const payroll = await getOrCreateMonthlyPayroll(emp.id, userId, yearMonth);
-    results.push({ employee: emp, payroll });
+    // Always use VA/VT from employee registration, not from the stored payroll record
+    results.push({ employee: emp, payroll: { ...payroll, vtDaily: emp.vtDaily, vaDaily: emp.vaDaily } });
   }
   return results;
 }
