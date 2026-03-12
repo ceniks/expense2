@@ -108,6 +108,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="statement"
+        options={{
+          title: "Extrato",
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="arrow.up.doc.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: "Config.",

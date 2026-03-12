@@ -997,6 +997,212 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
       .mutation(({ ctx, input }) => db.rejectPendingPayroll(input.id)),
   }),
 
+  // ─── Contas Bancárias ─────────────────────────────────────────────────────
+  bankAccounts: router({
+    list: protectedProcedure.query(({ ctx }) => db.listBankAccounts(ctx.user.id)),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(100),
+        bank: z.string().min(1).max(100),
+        accountType: z.enum(["checking", "savings", "credit"]),
+        profile: z.enum(["Pessoal", "Empresa"]),
+        color: z.string().min(1).max(20),
+      }))
+      .mutation(({ ctx, input }) => db.createBankAccount(ctx.user.id, input)),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(100).optional(),
+        bank: z.string().min(1).max(100).optional(),
+        accountType: z.enum(["checking", "savings", "credit"]).optional(),
+        profile: z.enum(["Pessoal", "Empresa"]).optional(),
+        color: z.string().min(1).max(20).optional(),
+      }))
+      .mutation(({ ctx, input }) => {
+        const { id, ...data } = input;
+        return db.updateBankAccount(id, ctx.user.id, data);
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ ctx, input }) => db.deleteBankAccount(input.id, ctx.user.id)),
+  }),
+
+  // ─── Extrato Bancário ──────────────────────────────────────────────────────
+  bankStatement: router({
+    listImports: protectedProcedure.query(({ ctx }) => db.listStatementImports(ctx.user.id)),
+
+    listRows: protectedProcedure
+      .input(z.object({ importId: z.number() }))
+      .query(({ ctx, input }) => db.listPendingStatementRows(ctx.user.id, input.importId)),
+
+    upload: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        fileBase64: z.string(),
+        fileName: z.string(),
+        fileType: z.enum(["pdf", "csv"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const fileBuffer = Buffer.from(input.fileBase64, "base64");
+
+        // Salvar arquivo no storage
+        const storageKey = `statements/${ctx.user.id}/${Date.now()}_${input.fileName}`;
+        const { url: fileUrl } = await storagePut(storageKey, fileBuffer, input.fileType === "pdf" ? "application/pdf" : "text/csv");
+
+        // Processar linhas do extrato
+        let rows: { date: string; description: string; amount: string; type: "debit" | "credit" }[] = [];
+
+        if (input.fileType === "csv") {
+          // Parse CSV simples
+          const text = fileBuffer.toString("utf-8");
+          const lines = text.split("\n").filter((l) => l.trim());
+          // Pula cabeçalho
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(";").map((c) => c.trim().replace(/"/g, ""));
+            if (cols.length < 3) continue;
+            const [date, description, amountStr] = cols;
+            const amount = parseFloat(amountStr.replace(",", "."));
+            if (isNaN(amount) || !date || !description) continue;
+            rows.push({
+              date: date.includes("/") ? date.split("/").reverse().join("-") : date,
+              description,
+              amount: Math.abs(amount).toFixed(2),
+              type: amount < 0 ? "debit" : "credit",
+            });
+          }
+        } else {
+          // PDF: converte para imagem e usa IA para extrair linhas
+          const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stmt-"));
+          const pdfPath = path.join(tmpDir, "stmt.pdf");
+          fs.writeFileSync(pdfPath, fileBuffer);
+          const imgBase = path.join(tmpDir, "page");
+          try {
+            execSync(`pdftoppm -r 150 -png "${pdfPath}" "${imgBase}"`, { timeout: 60000 });
+          } catch {}
+          const pageFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".png")).sort();
+          const allText: string[] = [];
+          for (const pageFile of pageFiles) {
+            const imgBuf = fs.readFileSync(path.join(tmpDir, pageFile));
+            const { url: imgUrl } = await storagePut(`statements/pages/${Date.now()}_${pageFile}`, imgBuf, "image/png");
+            const messages: Message[] = [{
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: imgUrl } },
+                { type: "text", text: `Extraia todas as transações deste extrato bancário brasileiro.
+Retorne um array JSON com objetos: { date: "YYYY-MM-DD", description: string, amount: number (sempre positivo), type: "debit"|"credit" }
+Débitos (saídas, pagamentos, compras) = "debit". Créditos (entradas, depósitos, pix recebido) = "credit".
+Retorne SOMENTE o array JSON, sem texto extra.` },
+              ],
+            }];
+            try {
+              const result = await invokeLLM({ messages, response_format: { type: "json_object" } });
+              const parsed = JSON.parse(result);
+              const arr = Array.isArray(parsed) ? parsed : parsed.transactions ?? parsed.rows ?? [];
+              allText.push(JSON.stringify(arr));
+            } catch {}
+          }
+          // Merge todas as páginas
+          for (const t of allText) {
+            try {
+              const arr = JSON.parse(t);
+              if (Array.isArray(arr)) {
+                rows.push(...arr.map((r: any) => ({
+                  date: r.date,
+                  description: r.description,
+                  amount: Math.abs(parseFloat(r.amount)).toFixed(2),
+                  type: r.type as "debit" | "credit",
+                })).filter((r) => r.date && r.description && !isNaN(parseFloat(r.amount))));
+              }
+            } catch {}
+          }
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+
+        if (rows.length === 0) {
+          throw new Error("Nenhuma transação encontrada no arquivo. Verifique o formato.");
+        }
+
+        // Buscar categorias do usuário para contexto da IA
+        const userCategories = await db.getUserCategories(ctx.user.id);
+        const categoryNames = userCategories.map((c) => c.name).join(", ");
+
+        // IA categoriza cada linha em batch
+        const batchSize = 20;
+        const enrichedRows: any[] = [];
+        for (let i = 0; i < rows.length; i += batchSize) {
+          const batch = rows.slice(i, i + batchSize);
+          const prompt = `Você é um assistente financeiro brasileiro. Categorize estas transações bancárias.
+Categorias disponíveis: ${categoryNames || "Alimentação, Transporte, Saúde, Moradia, Lazer, Educação, Serviços, Outros"}
+
+Para cada transação, retorne:
+- category: categoria mais adequada da lista acima
+- profile: "Pessoal" ou "Empresa" (baseado na descrição)
+- description: descrição limpa e legível em português
+- confidence: número de 0.0 a 1.0 indicando sua confiança
+
+Transações:
+${JSON.stringify(batch)}
+
+Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
+
+          try {
+            const messages: Message[] = [{ role: "user", content: prompt }];
+            const result = await invokeLLM({ messages, response_format: { type: "json_object" } });
+            const parsed = JSON.parse(result);
+            const arr = Array.isArray(parsed) ? parsed : parsed.rows ?? parsed.transactions ?? [];
+            for (let j = 0; j < batch.length; j++) {
+              enrichedRows.push({
+                ...batch[j],
+                suggestedCategory: arr[j]?.category ?? "Outros",
+                suggestedProfile: arr[j]?.profile ?? "Pessoal",
+                suggestedDescription: arr[j]?.description ?? batch[j].description,
+                confidence: String(arr[j]?.confidence ?? 0.5),
+              });
+            }
+          } catch {
+            // Se IA falhar, usa os dados brutos
+            batch.forEach((r) => enrichedRows.push({ ...r, suggestedCategory: "Outros", suggestedProfile: "Pessoal", suggestedDescription: r.description, confidence: "0.3" }));
+          }
+        }
+
+        // Salvar no banco
+        const importId = await db.createStatementImport(ctx.user.id, {
+          accountId: input.accountId,
+          fileName: input.fileName,
+          fileUrl,
+          totalRows: enrichedRows.length,
+        });
+        await db.insertStatementRows(ctx.user.id, importId, input.accountId, enrichedRows);
+
+        return { importId, total: enrichedRows.length };
+      }),
+
+    approveRow: protectedProcedure
+      .input(z.object({
+        rowId: z.number(),
+        description: z.string(),
+        category: z.string(),
+        profile: z.enum(["Pessoal", "Empresa"]),
+        date: z.string(),
+        amount: z.string(),
+      }))
+      .mutation(({ ctx, input }) => {
+        const { rowId, ...data } = input;
+        return db.approveStatementRow(rowId, ctx.user.id, data);
+      }),
+
+    ignoreRow: protectedProcedure
+      .input(z.object({ rowId: z.number() }))
+      .mutation(({ ctx, input }) => db.ignoreStatementRow(input.rowId, ctx.user.id)),
+
+    approveAll: protectedProcedure
+      .input(z.object({ importId: z.number() }))
+      .mutation(({ ctx, input }) => db.approveAllStatementRows(input.importId, ctx.user.id)),
+  }),
+
 });
 export type AppRouter = typeof appRouter;;
 

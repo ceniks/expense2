@@ -293,3 +293,67 @@ export const pendingPayrolls = mysqlTable("pending_payrolls", {
 
 export type PendingPayroll = typeof pendingPayrolls.$inferSelect;
 export type InsertPendingPayroll = typeof pendingPayrolls.$inferInsert;
+
+// ─── Contas Bancárias ─────────────────────────────────────────────────────────
+
+export const bankAccounts = mysqlTable("bank_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  groupId: int("groupId"),
+  name: varchar("name", { length: 100 }).notNull(),       // "Nubank Pessoal"
+  bank: varchar("bank", { length: 100 }).notNull(),        // "Nubank"
+  accountType: mysqlEnum("accountType", ["checking", "savings", "credit"]).notNull().default("checking"),
+  profile: mysqlEnum("profile", ["Pessoal", "Empresa"]).notNull().default("Pessoal"),
+  color: varchar("color", { length: 20 }).notNull().default("#6366f1"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BankAccount = typeof bankAccounts.$inferSelect;
+export type InsertBankAccount = typeof bankAccounts.$inferInsert;
+
+// ─── Importações de Extrato ───────────────────────────────────────────────────
+
+export const bankStatementImports = mysqlTable("bank_statement_imports", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  groupId: int("groupId"),
+  accountId: int("accountId").notNull(),
+  fileName: varchar("fileName", { length: 300 }).notNull(),
+  importedAt: timestamp("importedAt").defaultNow().notNull(),
+  totalRows: int("totalRows").notNull().default(0),
+  imported: int("imported").notNull().default(0),
+  ignored: int("ignored").notNull().default(0),
+  fileUrl: text("fileUrl"),
+});
+
+export type BankStatementImport = typeof bankStatementImports.$inferSelect;
+export type InsertBankStatementImport = typeof bankStatementImports.$inferInsert;
+
+// ─── Linhas do Extrato ────────────────────────────────────────────────────────
+
+export const statementRows = mysqlTable("statement_rows", {
+  id: int("id").autoincrement().primaryKey(),
+  importId: int("importId").notNull(),
+  accountId: int("accountId").notNull(),
+  userId: int("userId").notNull(),
+  groupId: int("groupId"),
+  date: varchar("date", { length: 10 }).notNull(),          // YYYY-MM-DD
+  description: varchar("description", { length: 500 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(), // negativo=débito, positivo=crédito
+  type: mysqlEnum("type", ["debit", "credit"]).notNull(),
+  // Sugestão da IA
+  suggestedCategory: varchar("suggestedCategory", { length: 100 }),
+  suggestedProfile: mysqlEnum("suggestedProfile", ["Pessoal", "Empresa"]),
+  suggestedDescription: varchar("suggestedDescription", { length: 500 }),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),  // 0.00 a 1.00
+  // Decisão do usuário
+  status: mysqlEnum("status", ["pending", "approved", "ignored"]).notNull().default("pending"),
+  isTransfer: boolean("isTransfer").notNull().default(false), // detectado como transferência entre contas
+  transferPairId: int("transferPairId"),  // id da linha par (outra conta)
+  paymentId: int("paymentId"),   // preenchido quando aprovado
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type StatementRow = typeof statementRows.$inferSelect;
+export type InsertStatementRow = typeof statementRows.$inferInsert;

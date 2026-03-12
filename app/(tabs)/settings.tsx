@@ -634,6 +634,161 @@ function DataMigrationSection() {
   );
 }
 
+// ─── Contas Bancárias ─────────────────────────────────────────────────────────
+
+const ACCOUNT_COLORS = [
+  "#6366f1", "#3B82F6", "#10B981", "#F59E0B", "#EF4444",
+  "#8B5CF6", "#EC4899", "#14B8A6", "#F97316", "#64748B",
+];
+
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  checking: "Conta Corrente",
+  savings: "Poupança",
+  credit: "Cartão de Crédito",
+};
+
+function BankAccountsSection() {
+  const colors = useColors();
+  const utils = trpc.useUtils();
+  const { data: accounts = [] } = trpc.bankAccounts.list.useQuery();
+  const createMut = trpc.bankAccounts.create.useMutation({ onSuccess: () => utils.bankAccounts.list.invalidate() });
+  const updateMut = trpc.bankAccounts.update.useMutation({ onSuccess: () => utils.bankAccounts.list.invalidate() });
+  const deleteMut = trpc.bankAccounts.delete.useMutation({ onSuccess: () => utils.bankAccounts.list.invalidate() });
+
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [name, setName] = useState("");
+  const [bank, setBank] = useState("");
+  const [accountType, setAccountType] = useState<"checking" | "savings" | "credit">("checking");
+  const [profile, setProfile] = useState<"Pessoal" | "Empresa">("Pessoal");
+  const [color, setColor] = useState(ACCOUNT_COLORS[0]);
+  const [saving, setSaving] = useState(false);
+
+  function openNew() {
+    setEditingId(null);
+    setName(""); setBank(""); setAccountType("checking"); setProfile("Pessoal"); setColor(ACCOUNT_COLORS[0]);
+    setShowModal(true);
+  }
+
+  function openEdit(acc: any) {
+    setEditingId(acc.id);
+    setName(acc.name); setBank(acc.bank); setAccountType(acc.accountType); setProfile(acc.profile); setColor(acc.color);
+    setShowModal(true);
+  }
+
+  async function handleSave() {
+    if (!name.trim() || !bank.trim()) { Alert.alert("Preencha nome e banco."); return; }
+    setSaving(true);
+    try {
+      if (editingId) {
+        await updateMut.mutateAsync({ id: editingId, name: name.trim(), bank: bank.trim(), accountType, profile, color });
+      } else {
+        await createMut.mutateAsync({ name: name.trim(), bank: bank.trim(), accountType, profile, color });
+      }
+      setShowModal(false);
+    } catch (e: any) {
+      Alert.alert("Erro", e?.message ?? "Falha ao salvar conta.");
+    } finally { setSaving(false); }
+  }
+
+  function handleDelete(acc: any) {
+    Alert.alert("Excluir conta", `Deseja excluir "${acc.name}"?`, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Excluir", style: "destructive", onPress: () => deleteMut.mutate({ id: acc.id }) },
+    ]);
+  }
+
+  return (
+    <View>
+      <View style={styles.sectionHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <IconSymbol name="creditcard.fill" size={16} color={colors.primary} />
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Contas Bancárias</Text>
+        </View>
+        <Pressable onPress={openNew} style={({ pressed }) => [styles.addBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.7 : 1 }]}>
+          <IconSymbol name="plus" size={18} color="#FFFFFF" />
+          <Text style={styles.addBtnText}>Nova</Text>
+        </Pressable>
+      </View>
+      <Text style={[styles.sectionSubtitle, { color: colors.muted }]}>
+        {accounts.length} conta{accounts.length !== 1 ? "s" : ""} cadastrada{accounts.length !== 1 ? "s" : ""}
+      </Text>
+
+      {accounts.map((acc: any) => (
+        <View key={acc.id} style={[styles.categoryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.colorDot, { backgroundColor: acc.color }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.categoryName, { color: colors.foreground, fontSize: 14 }]}>{acc.name}</Text>
+            <Text style={[{ color: colors.muted, fontSize: 11, marginTop: 2 }]}>{acc.bank} · {ACCOUNT_TYPE_LABELS[acc.accountType]} · {acc.profile}</Text>
+          </View>
+          <View style={styles.rowActions}>
+            <Pressable onPress={() => openEdit(acc)} style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.6 : 1 }]}>
+              <IconSymbol name="pencil" size={18} color={colors.primary} />
+            </Pressable>
+            <Pressable onPress={() => handleDelete(acc)} style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.6 : 1 }]}>
+              <IconSymbol name="trash.fill" size={18} color={colors.error} />
+            </Pressable>
+          </View>
+        </View>
+      ))}
+
+      <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{editingId ? "Editar Conta" : "Nova Conta"}</Text>
+
+            <Text style={[styles.label, { color: colors.muted }]}>Nome da conta</Text>
+            <TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              value={name} onChangeText={setName} placeholder="Ex: Nubank Pessoal" placeholderTextColor={colors.muted} />
+
+            <Text style={[styles.label, { color: colors.muted }]}>Banco</Text>
+            <TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              value={bank} onChangeText={setBank} placeholder="Ex: Nubank" placeholderTextColor={colors.muted} />
+
+            <Text style={[styles.label, { color: colors.muted }]}>Tipo</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+              {(["checking", "savings", "credit"] as const).map((t) => (
+                <Pressable key={t} onPress={() => setAccountType(t)}
+                  style={[styles.chipBtn, { backgroundColor: accountType === t ? colors.primary : colors.background, borderColor: accountType === t ? colors.primary : colors.border }]}>
+                  <Text style={{ color: accountType === t ? "#fff" : colors.muted, fontSize: 12 }}>{ACCOUNT_TYPE_LABELS[t]}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { color: colors.muted }]}>Perfil</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+              {(["Pessoal", "Empresa"] as const).map((p) => (
+                <Pressable key={p} onPress={() => setProfile(p)}
+                  style={[styles.chipBtn, { backgroundColor: profile === p ? colors.primary : colors.background, borderColor: profile === p ? colors.primary : colors.border }]}>
+                  <Text style={{ color: profile === p ? "#fff" : colors.muted, fontSize: 12 }}>{p}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { color: colors.muted }]}>Cor</Text>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {ACCOUNT_COLORS.map((c) => (
+                <Pressable key={c} onPress={() => setColor(c)}
+                  style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: colors.foreground }} />
+              ))}
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable onPress={() => setShowModal(false)} style={[styles.modalCancelBtn, { borderColor: colors.border, flex: 1 }]}>
+                <Text style={{ color: colors.muted }}>Cancelar</Text>
+              </Pressable>
+              <Pressable onPress={handleSave} disabled={saving}
+                style={[styles.modalSaveBtn, { backgroundColor: colors.primary, flex: 1, opacity: saving ? 0.6 : 1 }]}>
+                <Text style={{ color: "#fff", fontWeight: "600" }}>{saving ? "Salvando..." : "Salvar"}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -773,6 +928,12 @@ export default function SettingsScreen() {
           {pessoalCategories.length} categoria{pessoalCategories.length !== 1 ? "s" : ""} — toque para editar
         </Text>
         {pessoalCategories.map(renderCategoryItem)}
+
+        <View style={[styles.divider, { backgroundColor: colors.border, marginTop: 16 }]} />
+
+        {/* Contas Bancárias */}
+        <BankAccountsSection />
+
       </ScrollView>
 
       {/* Account section — only on mobile (web has sidebar) */}
@@ -1153,5 +1314,28 @@ const styles = StyleSheet.create({
   joinCancelText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  chipBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 36,
+  },
+  modalCancelBtn: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  modalSaveBtn: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
   },
 });

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, or, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, payments, categories, InsertPayment, InsertCategory, sharedGroups, groupMembers, InsertSharedGroup, InsertGroupMember, invoices, invoiceInstallments, financings, monthlyBills, monthlyBillPayments, employees, employeePayments, pendingPayrolls } from "../drizzle/schema";
+import { InsertUser, users, payments, categories, InsertPayment, InsertCategory, sharedGroups, groupMembers, InsertSharedGroup, InsertGroupMember, invoices, invoiceInstallments, financings, monthlyBills, monthlyBillPayments, employees, employeePayments, pendingPayrolls, bankAccounts, bankStatementImports, statementRows } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -1576,4 +1576,212 @@ export async function rejectPendingPayroll(payrollId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(pendingPayrolls).set({ status: "rejected" }).where(eq(pendingPayrolls.id, payrollId));
+}
+
+// ─── Contas Bancárias ─────────────────────────────────────────────────────────
+
+export async function listBankAccounts(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const groupId = await getUserGroupId(userId);
+  if (groupId) {
+    return db.select().from(bankAccounts)
+      .where(and(eq(bankAccounts.groupId, groupId), eq(bankAccounts.isActive, true)))
+      .orderBy(asc(bankAccounts.name));
+  }
+  return db.select().from(bankAccounts)
+    .where(and(eq(bankAccounts.userId, userId), eq(bankAccounts.isActive, true)))
+    .orderBy(asc(bankAccounts.name));
+}
+
+export async function createBankAccount(userId: number, data: {
+  name: string;
+  bank: string;
+  accountType: "checking" | "savings" | "credit";
+  profile: "Pessoal" | "Empresa";
+  color: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+  const result = await db.insert(bankAccounts).values({ ...data, userId, groupId });
+  return result[0].insertId;
+}
+
+export async function updateBankAccount(id: number, userId: number, data: {
+  name?: string;
+  bank?: string;
+  accountType?: "checking" | "savings" | "credit";
+  profile?: "Pessoal" | "Empresa";
+  color?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+  if (groupId) {
+    await db.update(bankAccounts).set(data).where(and(eq(bankAccounts.id, id), eq(bankAccounts.groupId, groupId)));
+  } else {
+    await db.update(bankAccounts).set(data).where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, userId)));
+  }
+}
+
+export async function deleteBankAccount(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+  if (groupId) {
+    await db.update(bankAccounts).set({ isActive: false }).where(and(eq(bankAccounts.id, id), eq(bankAccounts.groupId, groupId)));
+  } else {
+    await db.update(bankAccounts).set({ isActive: false }).where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, userId)));
+  }
+}
+
+// ─── Importação de Extrato ────────────────────────────────────────────────────
+
+export async function createStatementImport(userId: number, data: {
+  accountId: number;
+  fileName: string;
+  fileUrl?: string;
+  totalRows: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+  const result = await db.insert(bankStatementImports).values({ ...data, userId, groupId });
+  return result[0].insertId;
+}
+
+export async function listStatementImports(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const groupId = await getUserGroupId(userId);
+  if (groupId) {
+    return db.select().from(bankStatementImports)
+      .where(eq(bankStatementImports.groupId, groupId))
+      .orderBy(desc(bankStatementImports.importedAt));
+  }
+  return db.select().from(bankStatementImports)
+    .where(eq(bankStatementImports.userId, userId))
+    .orderBy(desc(bankStatementImports.importedAt));
+}
+
+export async function insertStatementRows(userId: number, importId: number, accountId: number, rows: {
+  date: string;
+  description: string;
+  amount: string;
+  type: "debit" | "credit";
+  suggestedCategory?: string;
+  suggestedProfile?: "Pessoal" | "Empresa";
+  suggestedDescription?: string;
+  confidence?: string;
+}[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+  if (rows.length === 0) return;
+  await db.insert(statementRows).values(
+    rows.map((r) => ({ ...r, userId, groupId, importId, accountId }))
+  );
+
+  // Detectar transferências: mesmo usuário, mesma data, mesmo valor, tipos opostos, contas diferentes
+  const inserted = await db.select()
+    .from(statementRows)
+    .where(and(eq(statementRows.userId, userId), eq(statementRows.importId, importId)));
+
+  // Buscar todas as linhas pendentes do usuário de outros imports (outras contas)
+  const otherRows = await db.select()
+    .from(statementRows)
+    .where(and(eq(statementRows.userId, userId), eq(statementRows.status, "pending")));
+
+  for (const row of inserted) {
+    if (row.isTransfer) continue; // já marcado
+    const oppositeType = row.type === "debit" ? "credit" : "debit";
+    const pair = otherRows.find(
+      (r) =>
+        r.id !== row.id &&
+        r.accountId !== row.accountId &&
+        r.date === row.date &&
+        r.amount === row.amount &&
+        r.type === oppositeType &&
+        !r.isTransfer
+    );
+    if (pair) {
+      await db.update(statementRows).set({ isTransfer: true, transferPairId: pair.id }).where(eq(statementRows.id, row.id));
+      await db.update(statementRows).set({ isTransfer: true, transferPairId: row.id }).where(eq(statementRows.id, pair.id));
+    }
+  }
+}
+
+export async function listPendingStatementRows(userId: number, importId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(statementRows)
+    .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")))
+    .orderBy(asc(statementRows.date));
+}
+
+export async function approveStatementRow(rowId: number, userId: number, data: {
+  description: string;
+  category: string;
+  profile: "Pessoal" | "Empresa";
+  date: string;
+  amount: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+
+  const payResult = await db.insert(payments).values({
+    userId,
+    groupId,
+    description: data.description,
+    amount: data.amount,
+    date: data.date,
+    category: data.category,
+    profile: data.profile,
+  });
+  const paymentId = payResult[0].insertId;
+  await db.update(statementRows).set({ status: "approved", paymentId }).where(eq(statementRows.id, rowId));
+
+  // Atualiza contador no import
+  const rowData = await db.select({ importId: statementRows.importId })
+    .from(statementRows).where(eq(statementRows.id, rowId)).limit(1);
+  if (rowData.length > 0) {
+    await db.update(bankStatementImports)
+      .set({ imported: bankStatementImports.imported })
+      .where(eq(bankStatementImports.id, rowData[0].importId));
+  }
+  return paymentId;
+}
+
+export async function ignoreStatementRow(rowId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(statementRows).set({ status: "ignored" }).where(and(eq(statementRows.id, rowId), eq(statementRows.userId, userId)));
+}
+
+export async function approveAllStatementRows(importId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+
+  const pending = await db.select().from(statementRows)
+    .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")));
+
+  let count = 0;
+  for (const row of pending) {
+    const payResult = await db.insert(payments).values({
+      userId,
+      groupId,
+      description: row.suggestedDescription ?? row.description,
+      amount: row.amount,
+      date: row.date,
+      category: row.suggestedCategory ?? "Outros",
+      profile: row.suggestedProfile ?? "Pessoal",
+    });
+    await db.update(statementRows).set({ status: "approved", paymentId: payResult[0].insertId }).where(eq(statementRows.id, row.id));
+    count++;
+  }
+  await db.update(bankStatementImports).set({ imported: count }).where(eq(bankStatementImports.id, importId));
+  return count;
 }

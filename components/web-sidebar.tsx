@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Agenda",        icon: "calendar.badge.clock",   route: "/(tabs)/schedule",  section: "financeiro" },
   { label: "Funcionários",  icon: "person.2.fill",          route: "/(tabs)/employees", section: "rh" },
   { label: "Relatório",     icon: "chart.pie.fill",         route: "/(tabs)/report",    section: "rh" },
+  { label: "Extrato",       icon: "arrow.up.doc.fill",      route: "/(tabs)/statement", section: "financeiro" },
   { label: "Config.",       icon: "gearshape.fill",         route: "/(tabs)/settings",  section: "sistema" },
 ];
 
