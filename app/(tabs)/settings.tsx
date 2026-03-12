@@ -638,21 +638,27 @@ function DataMigrationSection() {
 
 export default function SettingsScreen() {
   const colors = useColors();
-  const { categories, addCategory, updateCategory, deleteCategory } = usePayments();
+  const { categories, addCategory, updateCategory, deleteCategory, getCategoriesByProfile } = usePayments();
   const { user, logout } = useAuthContext();
 
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CustomCategory | undefined>(undefined);
+  const [addingForProfile, setAddingForProfile] = useState<"Pessoal" | "Empresa">("Empresa");
 
-  function handleAddCategory() {
+  const empresaCategories = getCategoriesByProfile("Empresa");
+  const pessoalCategories = getCategoriesByProfile("Pessoal");
+
+  function handleAddCategory(profile: "Pessoal" | "Empresa") {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditingCategory(undefined);
+    setAddingForProfile(profile);
     setShowModal(true);
   }
 
   function handleEditCategory(cat: CustomCategory) {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditingCategory(cat);
+    setAddingForProfile(cat.profile ?? "Empresa");
     setShowModal(true);
   }
 
@@ -661,14 +667,13 @@ export default function SettingsScreen() {
       if (editingCategory) {
         await updateCategory({ ...editingCategory, name, color });
       } else {
-        await addCategory(name, color);
+        await addCategory(name, color, addingForProfile);
       }
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowModal(false);
     } catch (err: any) {
-      // Show error but don't close modal so user can retry
       Alert.alert("Erro ao salvar", err?.message ?? "Não foi possível salvar a categoria. Tente novamente.");
-      throw err; // re-throw so CategoryModal can reset its saving state
+      throw err;
     }
   }
 
@@ -690,6 +695,29 @@ export default function SettingsScreen() {
     );
   }
 
+  function renderCategoryItem(item: CustomCategory) {
+    return (
+      <Pressable
+        key={item.id}
+        onPress={() => handleEditCategory(item)}
+        style={({ pressed }) => [styles.categoryRow, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+      >
+        <View style={[styles.colorDot, { backgroundColor: item.color }]} />
+        <View style={[styles.categoryBadge, { backgroundColor: item.color + "22", flex: 1 }]}>
+          <Text style={[styles.categoryName, { color: item.color }]}>{item.name}</Text>
+        </View>
+        <View style={styles.rowActions}>
+          <Pressable onPress={() => handleEditCategory(item)} style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.6 : 1 }]}>
+            <IconSymbol name="pencil" size={18} color={colors.primary} />
+          </Pressable>
+          <Pressable onPress={() => handleDeleteCategory(item)} style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.6 : 1 }]}>
+            <IconSymbol name="trash.fill" size={18} color={colors.error} />
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  }
+
   return (
     <ScreenContainer>
       {/* Header */}
@@ -697,67 +725,55 @@ export default function SettingsScreen() {
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Configurações</Text>
       </View>
 
-      <FlatList
-        data={categories}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        ListHeaderComponent={
-          <View>
-            {/* Sharing section */}
-            <SharingSection />
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+        {/* Sharing section */}
+        <SharingSection />
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* Divider */}
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        {/* Export / Import section */}
+        <DataMigrationSection />
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* Export / Import section */}
-            <DataMigrationSection />
-
-            {/* Divider */}
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-            {/* Categories section */}
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Categorias</Text>
-              <Pressable
-                onPress={handleAddCategory}
-                style={({ pressed }) => [styles.addBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.7 : 1 }]}
-              >
-                <IconSymbol name="plus" size={18} color="#FFFFFF" />
-                <Text style={styles.addBtnText}>Nova</Text>
-              </Pressable>
-            </View>
-            <Text style={[styles.sectionSubtitle, { color: colors.muted }]}>
-              {categories.length} categoria{categories.length !== 1 ? "s" : ""} — toque para editar
-            </Text>
+        {/* Categorias Empresa */}
+        <View style={styles.sectionHeader}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <IconSymbol name="building.2.fill" size={16} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Categorias Empresa</Text>
           </View>
-        }
-        renderItem={({ item }) => (
           <Pressable
-            onPress={() => handleEditCategory(item)}
-            style={({ pressed }) => [styles.categoryRow, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            onPress={() => handleAddCategory("Empresa")}
+            style={({ pressed }) => [styles.addBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.7 : 1 }]}
           >
-            <View style={[styles.colorDot, { backgroundColor: item.color }]} />
-            <View style={[styles.categoryBadge, { backgroundColor: item.color + "22", flex: 1 }]}>
-              <Text style={[styles.categoryName, { color: item.color }]}>{item.name}</Text>
-            </View>
-            <View style={styles.rowActions}>
-              <Pressable
-                onPress={() => handleEditCategory(item)}
-                style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.6 : 1 }]}
-              >
-                <IconSymbol name="pencil" size={18} color={colors.primary} />
-              </Pressable>
-              <Pressable
-                onPress={() => handleDeleteCategory(item)}
-                style={({ pressed }) => [styles.actionBtn, { opacity: pressed ? 0.6 : 1 }]}
-              >
-                <IconSymbol name="trash.fill" size={18} color={colors.error} />
-              </Pressable>
-            </View>
+            <IconSymbol name="plus" size={18} color="#FFFFFF" />
+            <Text style={styles.addBtnText}>Nova</Text>
           </Pressable>
-        )}
-        ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 16 }} />}
-      />
+        </View>
+        <Text style={[styles.sectionSubtitle, { color: colors.muted }]}>
+          {empresaCategories.length} categoria{empresaCategories.length !== 1 ? "s" : ""} — toque para editar
+        </Text>
+        {empresaCategories.map(renderCategoryItem)}
+
+        <View style={[styles.divider, { backgroundColor: colors.border, marginTop: 16 }]} />
+
+        {/* Categorias Pessoal */}
+        <View style={styles.sectionHeader}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <IconSymbol name="person.fill" size={16} color={colors.success} />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Categorias Pessoal</Text>
+          </View>
+          <Pressable
+            onPress={() => handleAddCategory("Pessoal")}
+            style={({ pressed }) => [styles.addBtn, { backgroundColor: colors.success, opacity: pressed ? 0.7 : 1 }]}
+          >
+            <IconSymbol name="plus" size={18} color="#FFFFFF" />
+            <Text style={styles.addBtnText}>Nova</Text>
+          </Pressable>
+        </View>
+        <Text style={[styles.sectionSubtitle, { color: colors.muted }]}>
+          {pessoalCategories.length} categoria{pessoalCategories.length !== 1 ? "s" : ""} — toque para editar
+        </Text>
+        {pessoalCategories.map(renderCategoryItem)}
+      </ScrollView>
 
       {/* Account section — only on mobile (web has sidebar) */}
       {Platform.OS !== "web" && user && (

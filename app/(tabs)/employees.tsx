@@ -631,9 +631,12 @@ function PayrollTab() {
     if (!payConfirm) return;
     try {
       if (payConfirm.type === "advance") {
+        // Adiantamento dia 20 — usa data de hoje
         await markAdvMut.mutateAsync({ payrollId: payConfirm.payrollId, paidDate: todayStr() });
       } else {
-        await markSalMut.mutateAsync({ payrollId: payConfirm.payrollId, paidDate: todayStr() });
+        // Salário dia 05 — sempre fixa no dia 05 do mês da folha
+        const day05 = `${yearMonth}-05`;
+        await markSalMut.mutateAsync({ payrollId: payConfirm.payrollId, paidDate: day05 });
       }
       refetch();
     } catch (err: any) {

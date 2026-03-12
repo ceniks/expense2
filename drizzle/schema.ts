@@ -56,6 +56,7 @@ export const categories = mysqlTable("categories", {
   groupId: int("groupId"),  // null = legacy (user-only), set = shared group
   name: varchar("name", { length: 100 }).notNull(),
   color: varchar("color", { length: 20 }).notNull().default("#6366f1"),
+  profile: mysqlEnum("profile", ["Pessoal", "Empresa"]).notNull().default("Empresa"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

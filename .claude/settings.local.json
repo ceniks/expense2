@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(tabs\\\\\\)/)"
+      "Bash(ls -la /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(tabs\\\\\\)/)",
+      "Read(//Users/luishenrique/.nvm/versions/**)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(command -v node)",
+      "Bash(ls /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/drizzle/*.sql)",
+      "Bash(head -20 /Users/luishenrique/Desktop/dieta/expense_tracker_ai-main/app/\\\\\\(tabs\\\\\\)/settings.tsx)"
     ]
   }
 }

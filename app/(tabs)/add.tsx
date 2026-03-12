@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Platform,
 } from "react-native";
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
@@ -28,7 +28,7 @@ function getToday() {
 export default function AddPaymentScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { addPayment, categories, activeProfile } = usePayments();
+  const { addPayment, categories, activeProfile, getCategoriesByProfile } = usePayments();
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -41,14 +41,27 @@ export default function AddPaymentScreen() {
   const [profile, setProfile] = useState<Profile>(activeProfile);
   const [notes, setNotes] = useState("");
 
+  const profileCategories = useMemo(
+    () => getCategoriesByProfile(profile as "Pessoal" | "Empresa"),
+    [profile, categories]
+  );
+
+  // Reset category when profile changes
+  useEffect(() => {
+    if (profileCategories.length > 0) {
+      setCategory(profileCategories[0].name);
+    }
+  }, [profile]);
+
   function resetForm() {
     setImageUri(null);
     setDescription("");
     setAmount("");
     setDate(getToday());
-    setCategory(categories[0]?.name ?? "Outros");
     setProfile(activeProfile);
     setNotes("");
+    const cats = getCategoriesByProfile(activeProfile as "Pessoal" | "Empresa");
+    setCategory(cats[0]?.name ?? "Outros");
   }
 
   const analyzeImage = trpc.analyzePaymentImage.useMutation();
@@ -272,7 +285,7 @@ export default function AddPaymentScreen() {
             <View style={styles.fieldGroup}>
               <Text style={[styles.label, { color: colors.muted }]}>Categoria</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-                {categories.map((cat) => (
+                {profileCategories.map((cat) => (
                   <Pressable
                     key={cat.id}
                     onPress={() => setCategory(cat.name)}

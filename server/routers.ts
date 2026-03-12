@@ -301,9 +301,10 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
       .input(z.object({
         name: z.string().min(1).max(100),
         color: z.string().min(1).max(20),
+        profile: z.enum(["Pessoal", "Empresa"]).optional(),
       }))
       .mutation(({ ctx, input }) =>
-        db.createCategory({ userId: ctx.user.id, name: input.name, color: input.color })
+        db.createCategory({ userId: ctx.user.id, name: input.name, color: input.color, profile: input.profile ?? "Empresa" })
       ),
 
     update: protectedProcedure
@@ -311,6 +312,7 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         id: z.number(),
         name: z.string().min(1).max(100).optional(),
         color: z.string().min(1).max(20).optional(),
+        profile: z.enum(["Pessoal", "Empresa"]).optional(),
       }))
       .mutation(({ ctx, input }) => {
         const { id, ...rest } = input;

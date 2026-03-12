@@ -15,18 +15,36 @@ export interface CustomCategory {
   id: string;
   name: string;
   color: string;
+  profile?: "Pessoal" | "Empresa";
 }
 
+export const DEFAULT_CATEGORIES_EMPRESA: CustomCategory[] = [
+  { id: "alimentacao", name: "Alimentação", color: "#FF6B6B", profile: "Empresa" },
+  { id: "transporte", name: "Transporte", color: "#4ECDC4", profile: "Empresa" },
+  { id: "saude", name: "Saúde", color: "#45B7D1", profile: "Empresa" },
+  { id: "moradia", name: "Moradia", color: "#96CEB4", profile: "Empresa" },
+  { id: "lazer", name: "Lazer", color: "#FFEAA7", profile: "Empresa" },
+  { id: "educacao", name: "Educação", color: "#DDA0DD", profile: "Empresa" },
+  { id: "vestuario", name: "Vestuário", color: "#98D8C8", profile: "Empresa" },
+  { id: "servicos", name: "Serviços", color: "#F7DC6F", profile: "Empresa" },
+  { id: "salarios", name: "Salários", color: "#5DADE2", profile: "Empresa" },
+  { id: "outros_emp", name: "Outros", color: "#BDC3C7", profile: "Empresa" },
+];
+
+export const DEFAULT_CATEGORIES_PESSOAL: CustomCategory[] = [
+  { id: "alimentacao_p", name: "Alimentação", color: "#FF6B6B", profile: "Pessoal" },
+  { id: "transporte_p", name: "Transporte", color: "#4ECDC4", profile: "Pessoal" },
+  { id: "saude_p", name: "Saúde", color: "#45B7D1", profile: "Pessoal" },
+  { id: "moradia_p", name: "Moradia", color: "#96CEB4", profile: "Pessoal" },
+  { id: "lazer_p", name: "Lazer", color: "#FFEAA7", profile: "Pessoal" },
+  { id: "educacao_p", name: "Educação", color: "#DDA0DD", profile: "Pessoal" },
+  { id: "vestuario_p", name: "Vestuário", color: "#98D8C8", profile: "Pessoal" },
+  { id: "outros_p", name: "Outros", color: "#BDC3C7", profile: "Pessoal" },
+];
+
 export const DEFAULT_CATEGORIES: CustomCategory[] = [
-  { id: "alimentacao", name: "Alimentação", color: "#FF6B6B" },
-  { id: "transporte", name: "Transporte", color: "#4ECDC4" },
-  { id: "saude", name: "Saúde", color: "#45B7D1" },
-  { id: "moradia", name: "Moradia", color: "#96CEB4" },
-  { id: "lazer", name: "Lazer", color: "#FFEAA7" },
-  { id: "educacao", name: "Educação", color: "#DDA0DD" },
-  { id: "vestuario", name: "Vestuário", color: "#98D8C8" },
-  { id: "servicos", name: "Serviços", color: "#F7DC6F" },
-  { id: "outros", name: "Outros", color: "#BDC3C7" },
+  ...DEFAULT_CATEGORIES_EMPRESA,
+  ...DEFAULT_CATEGORIES_PESSOAL,
 ];
 
 export function getCategoryColor(categories: CustomCategory[], name: string): string {
@@ -104,9 +122,10 @@ interface PaymentsContextValue {
   deletePayment: (id: string) => Promise<void>;
   getMonthPayments: (year: number, month: number, profile?: Profile | "all") => Payment[];
   getMonthTotal: (year: number, month: number, profile?: Profile | "all") => number;
-  addCategory: (name: string, color: string) => Promise<void>;
+  addCategory: (name: string, color: string, profile?: "Pessoal" | "Empresa") => Promise<void>;
   updateCategory: (category: CustomCategory) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  getCategoriesByProfile: (profile: "Pessoal" | "Empresa") => CustomCategory[];
   refreshFromCloud: () => Promise<void>;
 }
 
@@ -136,6 +155,7 @@ function dbCategoryToLocal(c: any): CustomCategory {
     id: String(c.id),
     name: c.name,
     color: c.color,
+    profile: c.profile ?? "Empresa",
   };
 }
 
@@ -332,10 +352,10 @@ export function PaymentsProvider({ children }: { children: React.ReactNode }) {
   // ── Category CRUD ─────────────────────────────────────────────────────────
 
   const addCategory = useCallback(
-    async (name: string, color: string) => {
+    async (name: string, color: string, profile: "Pessoal" | "Empresa" = "Empresa") => {
       try {
-        const id = await utils.client.categories.create.mutate({ name: name.trim(), color });
-        const category: CustomCategory = { id: String(id), name: name.trim(), color };
+        const id = await utils.client.categories.create.mutate({ name: name.trim(), color, profile });
+        const category: CustomCategory = { id: String(id), name: name.trim(), color, profile };
         dispatch({ type: "ADD_CATEGORY", category });
       } catch (err: any) {
         if (err?.data?.code === "UNAUTHORIZED") router.replace("/login");
@@ -421,6 +441,8 @@ export function PaymentsProvider({ children }: { children: React.ReactNode }) {
         updateCategory,
         deleteCategory,
         refreshFromCloud,
+        getCategoriesByProfile: (profile: "Pessoal" | "Empresa") =>
+          state.categories.filter((c) => !c.profile || c.profile === profile),
       }}
     >
       {children}
