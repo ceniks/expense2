@@ -1150,7 +1150,10 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
             if (cols.length <= Math.max(colDate, colDesc, colAmt)) continue;
 
             const rawDate = cols[colDate];
-            const description = cols[colDesc];
+            const rawDesc = cols[colDesc];
+            const tipoRaw = colType >= 0 ? cols[colType] : "";
+            // Combinar TIPO + DESCRICAO para dar contexto completo à IA
+            const description = tipoRaw && rawDesc ? `${tipoRaw} - ${rawDesc}` : (rawDesc || tipoRaw);
             let amountStr = cols[colAmt];
 
             // Remover espaços e normalizar número BR (1.234,56 → 1234.56)
@@ -1256,21 +1259,33 @@ Retorne SOMENTE o array JSON, sem texto extra.` },
           const batch = rows.slice(i, i + batchSize);
           const prompt = `Você é um assistente financeiro brasileiro. Categorize estas transações bancárias.
 
-Contexto da conta: perfil padrão "${accountProfile}", mas classifique baseado na DESCRIÇÃO da transação, não apenas no perfil da conta.
+A descrição de cada transação está no formato "TIPO - NOME", onde TIPO vem do extrato bancário (ex: "Pix enviado", "Pagamento de conta", "Vendas", "Pix recebido").
+
+Regras de categorização:
+
+TIPO de transação → como interpretar:
+- "Pix enviado - [nome]" ou "Pagamento de conta - [nome]": pagamento para fornecedor, prestador ou pessoa
+- "Pix recebido - [nome]": recebimento de cliente ou pessoa
+- "Vendas - Disponivel CREDITO [bandeira]": receita de vendas no cartão (crédito da máquina)
+- "Transferência Enviada - [nome]": transferência bancária enviada
+- "Cancelamento de venda": estorno/chargeback de venda
+- "Ajuste financeiro": taxas e ajustes da operadora
+- "Renda Fixa - Resgate": resgate de investimento
+- "Rendimento da conta": rendimento de saldo
 
 Regras para profile:
-- "Empresa": fornecedores, serviços empresariais, CNPJ, notas fiscais, salários, aluguel comercial, material de escritório, software/SaaS
-- "Pessoal": supermercado, restaurante, farmácia, lazer, streaming, vestuário, transporte pessoal, saúde pessoal
+- "Empresa": fornecedores (tecidos, embalagens, botões, etc.), serviços empresariais, CNPJ, impostos (Simples Nacional, DARF), salários (Pix para pessoas físicas em massa no dia 05), aluguel, frete/Correios, contabilidade, software/SaaS
+- "Pessoal": restaurante, farmácia, lazer, streaming, vestuário pessoal, saúde pessoal, academia
 - Em caso de dúvida, use o perfil da conta: "${accountProfile}"
 
-Categorias Empresa disponíveis: ${empresaCategories || "Serviços, Transporte, Alimentação, Outros"}
+Categorias Empresa disponíveis: ${empresaCategories || "Fornecedores, Folha de Pagamento, Impostos, Aluguel, Frete, Serviços, Marketing, Outros"}
 Categorias Pessoal disponíveis: ${pessoalCategories || "Alimentação, Transporte, Saúde, Lazer, Outros"}
 
 Para cada transação, retorne:
-- category: categoria mais adequada conforme o profile determinado
-- profile: "Pessoal" ou "Empresa" conforme as regras acima
-- description: descrição limpa e legível em português (ex: "Uber - Corrida", "Supermercado Pão de Açúcar", "AWS - Hospedagem")
-- confidence: 0.0 a 1.0 (alto quando a descrição é clara, baixo quando ambígua)
+- category: categoria mais adequada (use as categorias disponíveis acima)
+- profile: "Pessoal" ou "Empresa"
+- description: descrição curta e legível em português, sem o prefixo do tipo (ex: "L&F Boutique", "Tecelagem Chuahy - Tecidos", "Salário Funcionários", "Simples Nacional", "Excim - Importados")
+- confidence: 0.0 a 1.0 (use 0.9+ quando o nome é um fornecedor/empresa reconhecível, 0.5 quando é nome de pessoa física sem contexto)
 
 Transações:
 ${JSON.stringify(batch)}
