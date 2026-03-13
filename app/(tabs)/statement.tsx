@@ -77,6 +77,12 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
       utils.bankStatement.listImports.invalidate();
     }
   });
+  const revertMut = trpc.bankStatement.revertRow.useMutation({
+    onSuccess: () => {
+      utils.bankStatement.listRows.invalidate();
+      utils.bankStatement.listImports.invalidate();
+    }
+  });
 
   const bulkApproveMut = trpc.bankStatement.bulkApprove.useMutation({
     onSuccess: () => {
@@ -180,6 +186,8 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
 
   const transfers = rows.filter((r: any) => r.status === "pending" && r.isTransfer);
   const pending = rows.filter((r: any) => r.status === "pending" && !r.isTransfer);
+  const approved = rows.filter((r: any) => r.status === "approved");
+  const [showApproved, setShowApproved] = useState(false);
 
   return (
     <View style={{ flex: 1 }}>
@@ -316,6 +324,51 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                 </View>
                 );
               })}
+
+              {/* Seção de aprovados — para estorno */}
+              {approved.length > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  <Pressable
+                    onPress={() => setShowApproved(v => !v)}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 4 }}
+                  >
+                    <Text style={{ color: colors.muted, fontWeight: "700", fontSize: 13 }}>
+                      {approved.length} aprovado{approved.length !== 1 ? "s" : ""} — toque para ver / estornar
+                    </Text>
+                    <IconSymbol name={showApproved ? "chevron.up" : "chevron.down"} size={14} color={colors.muted} />
+                  </Pressable>
+                  {showApproved && approved.map((row: any) => (
+                    <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.75 }]}>
+                      <View style={s.rowTop}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.rowDate, { color: colors.muted }]}>{row.date}</Text>
+                          <Text style={[s.rowDesc, { color: colors.foreground }]} numberOfLines={2}>
+                            {row.suggestedDescription ?? row.description}
+                          </Text>
+                        </View>
+                        <Text style={[s.rowAmount, { color: row.type === "debit" ? colors.error : colors.success }]}>
+                          {fmtAmount(row.amount, row.type)}
+                        </Text>
+                      </View>
+                      <View style={s.rowMeta}>
+                        <View style={[s.catChip, { backgroundColor: colors.accent }]}>
+                          <Text style={[s.catChipText, { color: colors.primary }]}>{row.suggestedCategory ?? "—"}</Text>
+                        </View>
+                        <View style={[s.catChip, { backgroundColor: "#10B98122" }]}>
+                          <Text style={[s.catChipText, { color: "#10B981" }]}>Aprovado</Text>
+                        </View>
+                      </View>
+                      <Pressable
+                        onPress={() => showConfirm("Estornar lançamento", `Desfazer aprovação de "${row.suggestedDescription ?? row.description}"? O pagamento será deletado e o lançamento voltará para pendente.`, () => revertMut.mutate({ rowId: row.id }))}
+                        style={({ pressed }) => [s.actionBtnOutline, { borderColor: colors.error, opacity: pressed ? 0.6 : 1, justifyContent: "center" }]}
+                      >
+                        <IconSymbol name="arrow.uturn.backward" size={14} color={colors.error} />
+                        <Text style={[s.actionBtnText, { color: colors.error }]}>Estornar</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
             </ScrollView>
           )
       }

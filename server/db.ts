@@ -1733,8 +1733,24 @@ export async function listPendingStatementRows(userId: number, importId: number)
   const db = await getDb();
   if (!db) return [];
   return db.select().from(statementRows)
-    .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")))
+    .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId)))
     .orderBy(asc(statementRows.date));
+}
+
+export async function revertStatementRow(rowId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db.select().from(statementRows)
+    .where(and(eq(statementRows.id, rowId), eq(statementRows.userId, userId)))
+    .limit(1);
+  if (rows.length === 0) throw new Error("Lançamento não encontrado");
+
+  const row = rows[0];
+  if (row.paymentId) {
+    await db.delete(payments).where(and(eq(payments.id, row.paymentId), eq(payments.userId, userId)));
+  }
+  await db.update(statementRows).set({ status: "pending", paymentId: null }).where(eq(statementRows.id, rowId));
 }
 
 export async function approveStatementRow(rowId: number, userId: number, data: {
@@ -1821,13 +1837,16 @@ export async function bulkApproveStatementRows(
   return rowIds.length;
 }
 
-export async function approveAllStatementRows(importId: number, userId: number) {
+export async function approveAllStatementRows(importId: number, userId: number, minConfidence = 0.8) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const groupId = await getUserGroupId(userId);
 
-  const pending = await db.select().from(statementRows)
+  const allPending = await db.select().from(statementRows)
     .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")));
+
+  // Filtra apenas os que atingem a confiança mínima
+  const pending = allPending.filter(r => parseFloat(r.confidence ?? "0") >= minConfidence);
 
   let count = 0;
   for (const row of pending) {
