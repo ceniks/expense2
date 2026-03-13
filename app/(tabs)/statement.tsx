@@ -3,6 +3,26 @@ import {
   Alert, ActivityIndicator, TextInput, Platform,
 } from "react-native";
 import { useState } from "react";
+
+// No web, Alert.alert não funciona — usa window.alert/confirm nativos do browser
+function showAlert(title: string, message?: string) {
+  if (Platform.OS === "web") {
+    window.alert(message ? `${title}\n${message}` : title);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
+function showConfirm(title: string, message: string, onConfirm: () => void) {
+  if (Platform.OS === "web") {
+    if (window.confirm(`${title}\n${message}`)) onConfirm();
+  } else {
+    Alert.alert(title, message, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Confirmar", style: "destructive", onPress: onConfirm },
+    ]);
+  }
+}
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { ScreenContainer } from "@/components/screen-container";
@@ -40,7 +60,7 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
     onSuccess: (data) => {
       utils.bankStatement.listRows.invalidate();
       if (data?.propagated && data.propagated > 0) {
-        Alert.alert("Aprendizado aplicado", `${data.propagated} transação(ões) com o mesmo nome foram categorizadas automaticamente.`);
+        showAlert("Aprendizado aplicado", `${data.propagated} transação(ões) com o mesmo nome foram categorizadas automaticamente.`);
       }
     }
   });
@@ -86,7 +106,7 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         originalDescription: row.description,
       });
     } catch (e: any) {
-      Alert.alert("Erro", e?.message);
+      showAlert("Erro", e?.message);
     }
   }
 
@@ -105,24 +125,19 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
       });
       setEditingRow(null);
     } catch (e: any) {
-      Alert.alert("Erro", e?.message);
+      showAlert("Erro", e?.message);
     }
   }
 
   async function handleApproveAll() {
     const highConf = rows.filter((r: any) => parseFloat(r.confidence ?? "0") >= 0.8);
-    if (highConf.length === 0) { Alert.alert("Nenhum lançamento com alta confiança para aprovar."); return; }
-    Alert.alert("Aprovar todos", `Aprovar ${highConf.length} lançamento(s) com alta confiança?`, [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Aprovar", onPress: async () => {
-          setApprovingAll(true);
-          try { await approveAllMut.mutateAsync({ importId }); }
-          catch (e: any) { Alert.alert("Erro", e?.message); }
-          finally { setApprovingAll(false); }
-        }
-      },
-    ]);
+    if (highConf.length === 0) { showAlert("Nenhum lançamento com alta confiança para aprovar."); return; }
+    showConfirm("Aprovar todos", `Aprovar ${highConf.length} lançamento(s) com alta confiança?`, async () => {
+      setApprovingAll(true);
+      try { await approveAllMut.mutateAsync({ importId }); }
+      catch (e: any) { showAlert("Erro", e?.message); }
+      finally { setApprovingAll(false); }
+    });
   }
 
   const transfers = rows.filter((r: any) => r.status === "pending" && r.isTransfer);
@@ -171,10 +186,7 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
               {/* Botão apagar todos pendentes */}
               <Pressable
-                onPress={() => Alert.alert("Apagar pendentes", "Apagar todos os lançamentos pendentes desta triagem?", [
-                  { text: "Cancelar", style: "cancel" },
-                  { text: "Apagar", style: "destructive", onPress: () => deleteAllMut.mutate({ importId }) },
-                ])}
+                onPress={() => showConfirm("Apagar pendentes", "Apagar todos os lançamentos pendentes desta triagem?", () => deleteAllMut.mutate({ importId }))}
                 disabled={deleteAllMut.isPending}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#EF4444", borderRadius: 10, padding: 12, marginBottom: 12, opacity: deleteAllMut.isPending ? 0.6 : 1 }}
               >
@@ -331,7 +343,7 @@ export default function StatementScreen() {
   const [triageImportId, setTriageImportId] = useState<number | null>(null);
 
   async function handleUpload() {
-    if (!selectedAccount) { Alert.alert("Selecione uma conta antes de importar."); return; }
+    if (!selectedAccount) { showAlert("Selecione uma conta antes de importar."); return; }
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["application/pdf", "text/csv", "text/comma-separated-values"],
@@ -376,10 +388,10 @@ export default function StatementScreen() {
         fileType,
       });
       const learnedMsg = autoLearned > 0 ? `\n${autoLearned} já categorizadas automaticamente pelo histórico.` : "";
-      Alert.alert("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.${learnedMsg}`,
-        [{ text: "Revisar agora", onPress: () => setTriageImportId(importId) }, { text: "Depois" }]);
+      showConfirm("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.${learnedMsg}\n\nAbrir triagem agora?`,
+        () => setTriageImportId(importId));
     } catch (e: any) {
-      Alert.alert("Erro", e?.message ?? "Falha ao importar extrato.");
+      showAlert("Erro", e?.message ?? "Falha ao importar extrato.");
     } finally {
       setUploading(false);
     }
