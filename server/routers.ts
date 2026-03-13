@@ -1252,30 +1252,20 @@ Retorne SOMENTE o array JSON, sem texto extra.` },
         const empresaCategories = userCategories.filter((c: any) => !c.profile || c.profile === "Empresa").map((c: any) => c.name).join(", ");
         const pessoalCategories = userCategories.filter((c: any) => !c.profile || c.profile === "Pessoal").map((c: any) => c.name).join(", ");
 
-        // Aplicar regras aprendidas antes da IA
+        // Aplicar regras aprendidas — pré-categorizar o que já conhecemos
         const learnedRules = await db.getStatementRules(ctx.user.id);
-        const rowsNeedingAI: typeof rows = [];
-        const enrichedRows: any[] = new Array(rows.length);
-
-        for (let i = 0; i < rows.length; i++) {
-          const pattern = db.normalizePattern(rows[i].description);
+        const enrichedRows: any[] = rows.map((r) => {
+          const pattern = db.normalizePattern(r.description);
           const rule = learnedRules.get(pattern);
           if (rule) {
-            // Já conhecemos esse fornecedor — aplica direto com confiança máxima
-            enrichedRows[i] = {
-              ...rows[i],
-              suggestedCategory: rule.category,
-              suggestedProfile: rule.profile,
-              suggestedDescription: rule.suggestedDescription,
-              confidence: "0.98",
-            };
-          } else {
-            rowsNeedingAI.push({ ...rows[i], _originalIndex: i } as any);
+            return { date: r.date, description: r.description, amount: r.amount, type: r.type, suggestedCategory: rule.category, suggestedProfile: rule.profile, suggestedDescription: rule.suggestedDescription, confidence: "0.98" };
           }
-        }
+          return { date: r.date, description: r.description, amount: r.amount, type: r.type, suggestedCategory: "Outros", suggestedProfile: accountProfile, suggestedDescription: r.description, confidence: "0.3" };
+        });
 
-        // IA categoriza apenas linhas sem regra aprendida
+        // IA categoriza apenas linhas sem regra aprendida (confidence ainda 0.3)
         const batchSize = 20;
+        const rowsNeedingAI = enrichedRows.map((r, i) => ({ ...r, _idx: i })).filter((r) => r.confidence === "0.3");
         for (let i = 0; i < rowsNeedingAI.length; i += batchSize) {
           const batch = rowsNeedingAI.slice(i, i + batchSize);
           const prompt = `Você é um assistente financeiro brasileiro. Categorize estas transações bancárias.
@@ -1319,26 +1309,21 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
             const parsed = JSON.parse(result);
             const arr = Array.isArray(parsed) ? parsed : parsed.rows ?? parsed.transactions ?? [];
             for (let j = 0; j < batch.length; j++) {
-              const origIdx = (batch[j] as any)._originalIndex;
-              enrichedRows[origIdx] = {
-                ...batch[j],
+              const idx = (batch[j] as any)._idx;
+              enrichedRows[idx] = {
+                date: enrichedRows[idx].date,
+                description: enrichedRows[idx].description,
+                amount: enrichedRows[idx].amount,
+                type: enrichedRows[idx].type,
                 suggestedCategory: arr[j]?.category ?? "Outros",
-                suggestedProfile: arr[j]?.profile ?? "Pessoal",
-                suggestedDescription: arr[j]?.description ?? batch[j].description,
+                suggestedProfile: arr[j]?.profile ?? accountProfile,
+                suggestedDescription: arr[j]?.description ?? enrichedRows[idx].description,
                 confidence: String(arr[j]?.confidence ?? 0.5),
               };
             }
           } catch {
-            batch.forEach((r) => {
-              const origIdx = (r as any)._originalIndex;
-              enrichedRows[origIdx] = { ...r, suggestedCategory: "Outros", suggestedProfile: "Pessoal", suggestedDescription: r.description, confidence: "0.3" };
-            });
+            // se IA falhar, mantém os dados já preenchidos (suggestedCategory: Outros)
           }
-        }
-
-        // Preencher qualquer slot ainda vazio (segurança)
-        for (let i = 0; i < rows.length; i++) {
-          if (!enrichedRows[i]) enrichedRows[i] = { ...rows[i], suggestedCategory: "Outros", suggestedProfile: accountProfile, suggestedDescription: rows[i].description, confidence: "0.3" };
         }
 
         // Salvar no banco

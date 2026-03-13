@@ -138,33 +138,16 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         <Text style={[s.triageTitle, { color: colors.foreground }]}>
           Triagem — {pending.length} pendente{pending.length !== 1 ? "s" : ""}
         </Text>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          <Pressable
-            onPress={handleApproveAll}
-            disabled={approvingAll}
-            style={({ pressed }) => [s.approveAllBtn, { backgroundColor: colors.primary, opacity: pressed || approvingAll ? 0.6 : 1 }]}
-          >
-            {approvingAll
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Aprovar Alta Confiança</Text>
-            }
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              Alert.alert("Apagar pendentes", "Apagar todos os lançamentos pendentes desta triagem?", [
-                { text: "Cancelar", style: "cancel" },
-                { text: "Apagar", style: "destructive", onPress: () => deleteAllMut.mutate({ importId }) },
-              ]);
-            }}
-            disabled={deleteAllMut.isPending}
-            style={({ pressed }) => [s.approveAllBtn, { backgroundColor: "#EF4444", opacity: pressed || deleteAllMut.isPending ? 0.6 : 1 }]}
-          >
-            {deleteAllMut.isPending
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Apagar Pendentes</Text>
-            }
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={handleApproveAll}
+          disabled={approvingAll}
+          style={({ pressed }) => [s.approveAllBtn, { backgroundColor: colors.primary, opacity: pressed || approvingAll ? 0.6 : 1 }]}
+        >
+          {approvingAll
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Aprovar Alta Confiança</Text>
+          }
+        </Pressable>
       </View>
 
       {isLoading
@@ -186,6 +169,20 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
           )
           : (
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {/* Botão apagar todos pendentes */}
+              <Pressable
+                onPress={() => Alert.alert("Apagar pendentes", "Apagar todos os lançamentos pendentes desta triagem?", [
+                  { text: "Cancelar", style: "cancel" },
+                  { text: "Apagar", style: "destructive", onPress: () => deleteAllMut.mutate({ importId }) },
+                ])}
+                disabled={deleteAllMut.isPending}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#EF4444", borderRadius: 10, padding: 12, marginBottom: 12, opacity: deleteAllMut.isPending ? 0.6 : 1 }}
+              >
+                {deleteAllMut.isPending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Apagar todos os pendentes</Text>
+                }
+              </Pressable>
               {transfers.length > 0 && (
                 <View style={[s.transferBanner, { backgroundColor: colors.warning + "18", borderColor: colors.warning }]}>
                   <IconSymbol name="arrow.left.arrow.right" size={16} color={colors.warning} />
