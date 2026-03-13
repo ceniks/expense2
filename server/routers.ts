@@ -1385,9 +1385,10 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
         rowIds: z.array(z.number()),
         category: z.string(),
         profile: z.enum(["Pessoal", "Empresa"]),
+        importId: z.number().optional(),
       }))
       .mutation(({ ctx, input }) =>
-        db.bulkApproveStatementRows(input.rowIds, ctx.user.id, input.category, input.profile)
+        db.bulkApproveStatementRows(input.rowIds, ctx.user.id, input.category, input.profile, input.importId)
       ),
 
     deleteAllPending: protectedProcedure

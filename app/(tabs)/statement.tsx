@@ -115,6 +115,7 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         rowIds: Array.from(selectedIds),
         category: bulkCat,
         profile: bulkProfile,
+        importId,
       });
     } catch (e: any) {
       showAlert("Erro", e?.message);

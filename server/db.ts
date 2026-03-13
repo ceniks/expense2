@@ -1785,11 +1785,13 @@ export async function deleteAllPendingRows(importId: number, userId: number) {
 }
 
 export async function bulkApproveStatementRows(
-  rowIds: number[], userId: number, category: string, profile: "Pessoal" | "Empresa",
+  rowIds: number[], userId: number, category: string, profile: "Pessoal" | "Empresa", importId?: number,
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const groupId = await getUserGroupId(userId);
+
+  const learnedPatterns = new Set<string>();
 
   for (const rowId of rowIds) {
     const rows = await db.select().from(statementRows)
@@ -1797,16 +1799,25 @@ export async function bulkApproveStatementRows(
       .limit(1);
     if (rows.length === 0) continue;
     const row = rows[0];
+    const description = row.suggestedDescription ?? row.description;
     const payResult = await db.insert(payments).values({
-      userId, groupId,
-      description: row.suggestedDescription ?? row.description,
-      amount: row.amount,
-      date: row.date,
-      category,
-      profile,
+      userId, groupId, description, amount: row.amount, date: row.date, category, profile,
     });
     await db.update(statementRows).set({ status: "approved", paymentId: payResult[0].insertId }).where(eq(statementRows.id, rowId));
+
+    // Aprende o padrão
+    const pattern = normalizePattern(row.description);
+    await upsertStatementRule(userId, { pattern, category, profile, suggestedDescription: description });
+    learnedPatterns.add(pattern);
   }
+
+  // Propaga para pendentes com mesmo padrão (uma vez por padrão)
+  if (importId) {
+    for (const pattern of learnedPatterns) {
+      await propagateCategoryToSiblings(userId, importId, pattern, category, profile, category);
+    }
+  }
+
   return rowIds.length;
 }
 
