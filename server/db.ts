@@ -1784,6 +1784,32 @@ export async function deleteAllPendingRows(importId: number, userId: number) {
     .where(and(eq(statementRows.importId, importId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")));
 }
 
+export async function bulkApproveStatementRows(
+  rowIds: number[], userId: number, category: string, profile: "Pessoal" | "Empresa",
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+
+  for (const rowId of rowIds) {
+    const rows = await db.select().from(statementRows)
+      .where(and(eq(statementRows.id, rowId), eq(statementRows.userId, userId), eq(statementRows.status, "pending")))
+      .limit(1);
+    if (rows.length === 0) continue;
+    const row = rows[0];
+    const payResult = await db.insert(payments).values({
+      userId, groupId,
+      description: row.suggestedDescription ?? row.description,
+      amount: row.amount,
+      date: row.date,
+      category,
+      profile,
+    });
+    await db.update(statementRows).set({ status: "approved", paymentId: payResult[0].insertId }).where(eq(statementRows.id, rowId));
+  }
+  return rowIds.length;
+}
+
 export async function approveAllStatementRows(importId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

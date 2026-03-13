@@ -78,11 +78,48 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
     }
   });
 
+  const bulkApproveMut = trpc.bankStatement.bulkApprove.useMutation({
+    onSuccess: () => {
+      utils.bankStatement.listRows.invalidate();
+      utils.bankStatement.listImports.invalidate();
+      setSelectedIds(new Set());
+    }
+  });
+
   const [editingRow, setEditingRow] = useState<any | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editCat, setEditCat] = useState("");
   const [editProfile, setEditProfile] = useState<"Pessoal" | "Empresa">("Pessoal");
   const [approvingAll, setApprovingAll] = useState(false);
+
+  // Seleção múltipla
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkCat, setBulkCat] = useState("");
+  const [bulkProfile, setBulkProfile] = useState<"Pessoal" | "Empresa">("Pessoal");
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkApprove() {
+    if (selectedIds.size === 0 || !bulkCat) {
+      showAlert("Selecione uma categoria antes de aprovar.");
+      return;
+    }
+    try {
+      await bulkApproveMut.mutateAsync({
+        rowIds: Array.from(selectedIds),
+        category: bulkCat,
+        profile: bulkProfile,
+      });
+    } catch (e: any) {
+      showAlert("Erro", e?.message);
+    }
+  }
 
   const { data: userCategories = [] } = trpc.categories.list.useQuery();
 
@@ -214,9 +251,18 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                   </Pressable>
                 </View>
               )}
-              {pending.map((row: any) => (
-                <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {pending.map((row: any) => {
+                const isSelected = selectedIds.has(row.id);
+                return (
+                <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: isSelected ? colors.primary : colors.border, borderWidth: isSelected ? 2 : 1 }]}>
                   <View style={s.rowTop}>
+                    {/* Checkbox de seleção */}
+                    <Pressable
+                      onPress={() => toggleSelect(row.id)}
+                      style={{ marginRight: 10, marginTop: 2, width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : "transparent", alignItems: "center", justifyContent: "center" }}
+                    >
+                      {isSelected && <Text style={{ color: "#fff", fontSize: 13, fontWeight: "900", lineHeight: 15 }}>✓</Text>}
+                    </Pressable>
                     <View style={{ flex: 1 }}>
                       <Text style={[s.rowDate, { color: colors.muted }]}>{row.date}</Text>
                       <Text style={[s.rowDesc, { color: colors.foreground }]} numberOfLines={2}>
@@ -267,10 +313,63 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                     </Pressable>
                   </View>
                 </View>
-              ))}
+                );
+              })}
             </ScrollView>
           )
       }
+
+      {/* Barra de ação em massa */}
+      {selectedIds.size > 0 && (
+        <View style={[s.bulkBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>
+              {selectedIds.size} selecionado{selectedIds.size !== 1 ? "s" : ""}
+            </Text>
+            <Pressable onPress={() => setSelectedIds(new Set())}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>Limpar</Text>
+            </Pressable>
+          </View>
+
+          <Text style={[s.editLabel, { color: colors.muted, marginBottom: 6 }]}>Categoria</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+            {(userCategories as any[]).map((c: any) => (
+              <Pressable key={c.id} onPress={() => setBulkCat(c.name)}
+                style={[s.catSelectChip, {
+                  backgroundColor: bulkCat === c.name ? c.color : colors.background,
+                  borderColor: bulkCat === c.name ? c.color : colors.border,
+                }]}>
+                <Text style={{ color: bulkCat === c.name ? "#fff" : colors.muted, fontSize: 12 }}>{c.name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            {(["Pessoal", "Empresa"] as const).map((p) => (
+              <Pressable key={p} onPress={() => setBulkProfile(p)}
+                style={[s.catSelectChip, {
+                  backgroundColor: bulkProfile === p ? colors.primary : colors.background,
+                  borderColor: bulkProfile === p ? colors.primary : colors.border,
+                }]}>
+                <Text style={{ color: bulkProfile === p ? "#fff" : colors.muted, fontSize: 12 }}>{p}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Pressable
+            onPress={handleBulkApprove}
+            disabled={bulkApproveMut.isPending || !bulkCat}
+            style={[s.editSaveBtn, { backgroundColor: bulkCat ? colors.primary : colors.border, opacity: bulkApproveMut.isPending ? 0.6 : 1 }]}
+          >
+            {bulkApproveMut.isPending
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
+                  Aprovar {selectedIds.size} lançamento{selectedIds.size !== 1 ? "s" : ""}
+                </Text>
+            }
+          </Pressable>
+        </View>
+      )}
 
       {/* Modal de edição */}
       <Modal visible={!!editingRow} transparent animationType="slide" onRequestClose={() => setEditingRow(null)}>
@@ -560,4 +659,8 @@ const s = StyleSheet.create({
   transferBannerTitle: { fontSize: 13, fontWeight: "700" },
   transferBannerSub: { fontSize: 11, marginTop: 2 },
   transferIgnoreBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 7 },
+  bulkBar: {
+    padding: 16, borderTopWidth: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 8,
+  },
 });
