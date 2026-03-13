@@ -332,9 +332,21 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
             </Pressable>
           </View>
 
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            {(["Pessoal", "Empresa"] as const).map((p) => (
+              <Pressable key={p} onPress={() => { setBulkProfile(p); setBulkCat(""); }}
+                style={[s.catSelectChip, {
+                  backgroundColor: bulkProfile === p ? colors.primary : colors.background,
+                  borderColor: bulkProfile === p ? colors.primary : colors.border,
+                }]}>
+                <Text style={{ color: bulkProfile === p ? "#fff" : colors.muted, fontSize: 12 }}>{p}</Text>
+              </Pressable>
+            ))}
+          </View>
+
           <Text style={[s.editLabel, { color: colors.muted, marginBottom: 6 }]}>Categoria</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-            {(userCategories as any[]).map((c: any) => (
+            {(userCategories as any[]).filter((c: any) => c.profile === bulkProfile).map((c: any) => (
               <Pressable key={c.id} onPress={() => setBulkCat(c.name)}
                 style={[s.catSelectChip, {
                   backgroundColor: bulkCat === c.name ? c.color : colors.background,
@@ -344,18 +356,6 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
               </Pressable>
             ))}
           </ScrollView>
-
-          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-            {(["Pessoal", "Empresa"] as const).map((p) => (
-              <Pressable key={p} onPress={() => setBulkProfile(p)}
-                style={[s.catSelectChip, {
-                  backgroundColor: bulkProfile === p ? colors.primary : colors.background,
-                  borderColor: bulkProfile === p ? colors.primary : colors.border,
-                }]}>
-                <Text style={{ color: bulkProfile === p ? "#fff" : colors.muted, fontSize: 12 }}>{p}</Text>
-              </Pressable>
-            ))}
-          </View>
 
           <Pressable
             onPress={handleBulkApprove}
@@ -386,7 +386,7 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
 
             <Text style={[s.editLabel, { color: colors.muted }]}>Categoria</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              {(userCategories as any[]).map((c: any) => (
+              {(userCategories as any[]).filter((c: any) => c.profile === editProfile).map((c: any) => (
                 <Pressable key={c.id} onPress={() => setEditCat(c.name)}
                   style={[s.catSelectChip, {
                     backgroundColor: editCat === c.name ? c.color : colors.background,
@@ -400,7 +400,7 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
             <Text style={[s.editLabel, { color: colors.muted }]}>Perfil</Text>
             <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
               {(["Pessoal", "Empresa"] as const).map((p) => (
-                <Pressable key={p} onPress={() => setEditProfile(p)}
+                <Pressable key={p} onPress={() => { setEditProfile(p); setEditCat(""); }}
                   style={[s.catSelectChip, {
                     backgroundColor: editProfile === p ? colors.primary : colors.background,
                     borderColor: editProfile === p ? colors.primary : colors.border,
