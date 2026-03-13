@@ -215,8 +215,8 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
         ? <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
         : pending.length === 0
           ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <IconSymbol name="checkmark.circle.fill" size={48} color={colors.success} />
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, alignItems: "center" }}>
+              <IconSymbol name="checkmark.circle.fill" size={48} color={colors.success} style={{ marginTop: 32 }} />
               <Text style={[{ color: colors.foreground, fontSize: 16, fontWeight: "600", marginTop: 12 }]}>Tudo revisado!</Text>
               {transfers.length > 0 && (
                 <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>
@@ -226,7 +226,52 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
               <Pressable onPress={onBack} style={[s.approveAllBtn, { backgroundColor: colors.primary, marginTop: 16 }]}>
                 <Text style={{ color: "#fff", fontWeight: "600" }}>Voltar</Text>
               </Pressable>
-            </View>
+
+              {/* Aprovados para estorno mesmo sem pendentes */}
+              {approved.length > 0 && (
+                <View style={{ width: "100%", marginTop: 24 }}>
+                  <Pressable
+                    onPress={() => setShowApproved(v => !v)}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 4 }}
+                  >
+                    <Text style={{ color: colors.muted, fontWeight: "700", fontSize: 13 }}>
+                      {approved.length} aprovado{approved.length !== 1 ? "s" : ""} — toque para ver / estornar
+                    </Text>
+                    <IconSymbol name={showApproved ? "chevron.up" : "chevron.down"} size={14} color={colors.muted} />
+                  </Pressable>
+                  {showApproved && approved.map((row: any) => (
+                    <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.75, width: "100%" }]}>
+                      <View style={s.rowTop}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.rowDate, { color: colors.muted }]}>{row.date}</Text>
+                          <Text style={[s.rowDesc, { color: colors.foreground }]} numberOfLines={2}>
+                            {row.suggestedDescription ?? row.description}
+                          </Text>
+                        </View>
+                        <Text style={[s.rowAmount, { color: row.type === "debit" ? colors.error : colors.success }]}>
+                          {fmtAmount(row.amount, row.type)}
+                        </Text>
+                      </View>
+                      <View style={s.rowMeta}>
+                        <View style={[s.catChip, { backgroundColor: colors.accent }]}>
+                          <Text style={[s.catChipText, { color: colors.primary }]}>{row.suggestedCategory ?? "—"}</Text>
+                        </View>
+                        <View style={[s.catChip, { backgroundColor: "#10B98122" }]}>
+                          <Text style={[s.catChipText, { color: "#10B981" }]}>Aprovado</Text>
+                        </View>
+                      </View>
+                      <Pressable
+                        onPress={() => showConfirm("Estornar lançamento", `Desfazer aprovação de "${row.suggestedDescription ?? row.description}"? O pagamento será deletado e o lançamento voltará para pendente.`, () => revertMut.mutate({ rowId: row.id }))}
+                        style={({ pressed }) => [s.actionBtnOutline, { borderColor: colors.error, opacity: pressed ? 0.6 : 1, justifyContent: "center" }]}
+                      >
+                        <IconSymbol name="arrow.uturn.backward" size={14} color={colors.error} />
+                        <Text style={[s.actionBtnText, { color: colors.error }]}>Estornar</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
           )
           : (
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
