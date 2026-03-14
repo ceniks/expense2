@@ -1790,7 +1790,13 @@ export async function approveStatementRow(rowId: number, userId: number, data: {
     profile: data.profile,
   });
   const paymentId = payResult[0].insertId;
-  await db.update(statementRows).set({ status: "approved", paymentId }).where(eq(statementRows.id, rowId));
+  await db.update(statementRows).set({
+    status: "approved",
+    paymentId,
+    suggestedCategory: data.category,
+    suggestedProfile: data.profile,
+    suggestedDescription: data.description,
+  }).where(eq(statementRows.id, rowId));
 
   // Atualiza contador no import
   const rowData = await db.select({ importId: statementRows.importId })
@@ -1835,7 +1841,13 @@ export async function bulkApproveStatementRows(
     const payResult = await db.insert(payments).values({
       userId, groupId, description, amount: row.amount, date: row.date, category, profile,
     });
-    await db.update(statementRows).set({ status: "approved", paymentId: payResult[0].insertId }).where(eq(statementRows.id, rowId));
+    await db.update(statementRows).set({
+      status: "approved",
+      paymentId: payResult[0].insertId,
+      suggestedCategory: category,
+      suggestedProfile: profile,
+      suggestedDescription: description,
+    }).where(eq(statementRows.id, rowId));
 
     // Aprende o padrão
     const pattern = normalizePattern(row.description);

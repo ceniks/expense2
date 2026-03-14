@@ -36,20 +36,22 @@ function brToISO(br: string): string {
   return `${y}-${m}-${d}`;
 }
 
-function endOfWeek(): string {
+function currentYearMonth(): string {
   const d = new Date();
-  // End of week = next 6 days from today, but never beyond end of month
-  const eow = new Date(d);
-  eow.setDate(d.getDate() + 6);
-  const eom = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  const target = eow < eom ? eow : eom;
-  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function endOfMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
+function addMonths(ym: string, delta: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  const names = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  return `${names[m - 1]} ${y}`;
 }
 
 function formatCurrency(val: string | number): string {
@@ -62,8 +64,6 @@ function formatDate(dateStr: string): string {
   const [y, m, d] = dateStr.split("-");
   return `${d}/${m}/${y}`;
 }
-
-type Period = "today" | "week" | "month" | "future" | "paid";
 
 // Unified item type matching the server's UnifiedScheduleItem
 interface UnifiedItem {
@@ -89,14 +89,6 @@ interface UnifiedItem {
   // bill
   billId?: number;
   yearMonth?: string;
-}
-
-function classifyItem(item: UnifiedItem, todayStr: string, eow: string, eom: string): Period {
-  if (item.isPaid) return "paid";
-  if (item.dueDate <= todayStr) return "today";
-  if (item.dueDate <= eow) return "week";
-  if (item.dueDate <= eom) return "month";
-  return "future";
 }
 
 function getStatusBadge(item: UnifiedItem, todayStr: string) {
@@ -368,6 +360,9 @@ export default function ScheduleScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<UnifiedItem["type"] | null>(null);
+  const [selectedYearMonth, setSelectedYearMonth] = useState(currentYearMonth);
+
+  const todayStr = todayISO();
 
   const allCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -377,42 +372,33 @@ export default function ScheduleScreen() {
     return Array.from(cats).sort();
   }, [items]);
 
-  const filteredItems = useMemo(() => {
+  // Items do mês selecionado
+  const monthItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return (items as UnifiedItem[]).filter((item) => {
+      const matchesMonth = item.dueDate.startsWith(selectedYearMonth);
       const matchesName = !q || item.name.toLowerCase().includes(q);
       const matchesCat = !selectedCategory || item.category === selectedCategory;
       const matchesType = !selectedType || item.type === selectedType;
-      return matchesName && matchesCat && matchesType;
+      return matchesMonth && matchesName && matchesCat && matchesType;
     });
-  }, [items, searchQuery, selectedCategory, selectedType]);
+  }, [items, selectedYearMonth, searchQuery, selectedCategory, selectedType]);
 
   const isFiltered = searchQuery.trim().length > 0 || selectedCategory !== null || selectedType !== null;
 
-  const todayStr = todayISO();
-  const eow = endOfWeek();
-  const eom = endOfMonth();
+  const pendingItems = useMemo(() =>
+    monthItems.filter(i => !i.isPaid).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+    [monthItems]);
+  const paidItems = useMemo(() =>
+    monthItems.filter(i => i.isPaid).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+    [monthItems]);
 
-  const groups: Record<Period, UnifiedItem[]> = useMemo(() => {
-    const g: Record<Period, UnifiedItem[]> = { today: [], week: [], month: [], future: [], paid: [] };
-    for (const item of filteredItems) {
-      const period = classifyItem(item, todayStr, eow, eom);
-      g[period].push(item);
-    }
-    return g;
-  }, [filteredItems, todayStr, eow, eom]);
+  const totalPending = pendingItems.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalPaid = paidItems.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalMonth = totalPending + totalPaid;
 
-  const totalToday = groups.today.reduce((s, i) => s + parseFloat(i.amount), 0);
-  const totalWeek = groups.week.reduce((s, i) => s + parseFloat(i.amount), 0);
-  // Este Mês = tudo que vence até o fim do mês (hoje + semana + restante do mês)
-  const totalMonthOnly = groups.month.reduce((s, i) => s + parseFloat(i.amount), 0);
-  const totalMonth = totalToday + totalWeek + totalMonthOnly;
-  const totalFuture = groups.future.reduce((s, i) => s + parseFloat(i.amount), 0);
-  const totalPending = totalToday + totalWeek + totalMonthOnly + totalFuture;
-
-  const filteredTotal = useMemo(() => {
-    return filteredItems.filter((i) => !i.isPaid).reduce((s, i) => s + parseFloat(i.amount), 0);
-  }, [filteredItems]);
+  const overdueItems = pendingItems.filter(i => i.dueDate < todayStr);
+  const totalOverdue = overdueItems.reduce((s, i) => s + parseFloat(i.amount), 0);
 
   const handlePay = useCallback((item: UnifiedItem) => {
     setSelectedItem(item);
@@ -500,108 +486,68 @@ export default function ScheduleScreen() {
   // Build flat list
   type ListItem =
     | { type: "summary" }
-    | { type: "filter-result" }
-    | { type: "section"; period: Period; title: string; total: number; color: string }
+    | { type: "section"; title: string; total: number; color: string }
     | { type: "item"; data: UnifiedItem }
     | { type: "empty"; message: string };
 
   const listData: ListItem[] = useMemo(() => {
     const data: ListItem[] = [{ type: "summary" }];
 
-    if (isFiltered) data.push({ type: "filter-result" });
-
-    const sections: { period: Period; title: string; color: string }[] = [
-      { period: "today", title: "Hoje / Vencidos", color: "#EF4444" },
-      { period: "week", title: "Esta Semana", color: "#F59E0B" },
-      { period: "month", title: "Este Mês", color: "#3B82F6" },
-      { period: "future", title: "Próximos Meses", color: "#8B5CF6" },
-      { period: "paid", title: "Pagamentos Realizados", color: "#22C55E" },
-    ];
-
-    let hasAny = false;
-    for (const sec of sections) {
-      const sectionItems = groups[sec.period];
-      if (sectionItems.length === 0) continue;
-      hasAny = true;
-      const total = sectionItems.reduce((s, i) => s + parseFloat(i.amount), 0);
-      data.push({ type: "section", period: sec.period, title: sec.title, total, color: sec.color });
-      for (const item of sectionItems) {
-        data.push({ type: "item", data: item });
-      }
+    if (pendingItems.length > 0) {
+      data.push({ type: "section", title: `A Pagar · ${pendingItems.length}`, total: totalPending, color: "#EF4444" });
+      for (const item of pendingItems) data.push({ type: "item", data: item });
     }
 
-    if (!hasAny && !isLoading) {
+    if (paidItems.length > 0) {
+      data.push({ type: "section", title: `Pago · ${paidItems.length}`, total: totalPaid, color: "#22C55E" });
+      for (const item of paidItems) data.push({ type: "item", data: item });
+    }
+
+    if (pendingItems.length === 0 && paidItems.length === 0 && !isLoading) {
       data.push({
         type: "empty",
         message: isFiltered
           ? "Nenhum item encontrado para essa busca."
-          : "Nenhum compromisso encontrado.\nAdicione uma Nota Fiscal, Financiamento ou Conta Mensal.",
+          : "Nenhum compromisso em " + monthLabel(selectedYearMonth) + ".",
       });
     }
 
     return data;
-  }, [groups, isFiltered, isLoading]);
+  }, [pendingItems, paidItems, totalPending, totalPaid, isFiltered, isLoading, selectedYearMonth]);
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === "summary") {
       return (
-        <View style={[styles.summaryCard, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
-          <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Resumo de Pagamentos</Text>
+        <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {/* Total do mês */}
+          <View style={{ alignItems: "center", marginBottom: 14 }}>
+            <Text style={[styles.summaryLabel, { color: colors.muted, marginBottom: 2 }]}>Total do Mês</Text>
+            <Text style={[{ fontSize: 26, fontWeight: "800", color: colors.foreground }]}>{formatCurrency(totalMonth)}</Text>
+          </View>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryLabel, { color: colors.muted }]}>Hoje</Text>
-              <Text style={[styles.summaryValue, { color: totalToday > 0 ? "#EF4444" : colors.foreground }]}>
-                {formatCurrency(totalToday)}
+              <Text style={[styles.summaryLabel, { color: colors.muted }]}>A Pagar</Text>
+              <Text style={[styles.summaryValue, { color: totalPending > 0 ? "#EF4444" : colors.foreground }]}>
+                {formatCurrency(totalPending)}
               </Text>
             </View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryLabel, { color: colors.muted }]}>Esta Semana</Text>
-              <Text style={[styles.summaryValue, { color: totalWeek > 0 ? "#F59E0B" : colors.foreground }]}>
-                {formatCurrency(totalWeek)}
+              <Text style={[styles.summaryLabel, { color: colors.muted }]}>Pago</Text>
+              <Text style={[styles.summaryValue, { color: totalPaid > 0 ? "#22C55E" : colors.foreground }]}>
+                {formatCurrency(totalPaid)}
               </Text>
             </View>
-            <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryLabel, { color: colors.muted }]}>Este Mês</Text>
-              <Text style={[styles.summaryValue, { color: totalMonth > 0 ? "#3B82F6" : colors.foreground }]}>
-                {formatCurrency(totalMonth)}
-              </Text>
-            </View>
+            {overdueItems.length > 0 && (
+              <>
+                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryLabel, { color: "#EF4444" }]}>Vencido</Text>
+                  <Text style={[styles.summaryValue, { color: "#EF4444" }]}>{formatCurrency(totalOverdue)}</Text>
+                </View>
+              </>
+            )}
           </View>
-          {/* Total pendente removido conforme solicitado */}
-        </View>
-      );
-    }
-
-    if (item.type === "filter-result") {
-      const typeLabel = selectedType === "invoice" ? "Nota Fiscal" : selectedType === "financing" ? "Financiamento" : selectedType === "bill" ? "Conta Mensal" : null;
-      const label = [
-        searchQuery.trim() ? `"${searchQuery.trim()}"` : null,
-        typeLabel,
-        selectedCategory,
-      ].filter(Boolean).join(" · ") || "Filtro ativo";
-      return (
-        <View style={[styles.filterResultCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.filterResultRow}>
-            <IconSymbol name="magnifyingglass" size={14} color={colors.primary} />
-            <Text style={[styles.filterResultLabel, { color: colors.muted }]}>
-              Resultado para {label}
-            </Text>
-            <Pressable
-              onPress={() => { setSearchQuery(""); setSelectedCategory(null); setSelectedType(null); }}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <Text style={[styles.filterClearText, { color: colors.primary }]}>Limpar</Text>
-            </Pressable>
-          </View>
-          <View style={[styles.filterResultTotal, { borderTopColor: colors.border }]}>
-            <Text style={[styles.filterResultTotalLabel, { color: colors.muted }]}>Total a pagar (filtrado)</Text>
-            <Text style={[styles.filterResultTotalValue, { color: colors.primary }]}>{formatCurrency(filteredTotal)}</Text>
-          </View>
-          <Text style={[styles.filterResultCount, { color: colors.muted }]}>
-            {filteredItems.filter((i) => !i.isPaid).length} item{filteredItems.filter((i) => !i.isPaid).length !== 1 ? "s" : ""} pendente{filteredItems.filter((i) => !i.isPaid).length !== 1 ? "s" : ""}
-          </Text>
         </View>
       );
     }
@@ -639,11 +585,24 @@ export default function ScheduleScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Agenda</Text>
-        <Pressable
-          onPress={() => refetch()}
-          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-        >
+        <Pressable onPress={() => refetch()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
           <IconSymbol name="arrow.clockwise" size={20} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      {/* Month navigator */}
+      <View style={[styles.monthNav, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Pressable onPress={() => setSelectedYearMonth(m => addMonths(m, -1))} style={({ pressed }) => [styles.monthNavBtn, { opacity: pressed ? 0.5 : 1 }]}>
+          <IconSymbol name="chevron.left" size={18} color={colors.primary} />
+        </Pressable>
+        <Pressable onPress={() => setSelectedYearMonth(currentYearMonth())} style={{ alignItems: "center", flex: 1 }}>
+          <Text style={[styles.monthNavLabel, { color: colors.foreground }]}>{monthLabel(selectedYearMonth)}</Text>
+          {selectedYearMonth !== currentYearMonth() && (
+            <Text style={{ color: colors.primary, fontSize: 11, marginTop: 1 }}>toque para voltar ao atual</Text>
+          )}
+        </Pressable>
+        <Pressable onPress={() => setSelectedYearMonth(m => addMonths(m, 1))} style={({ pressed }) => [styles.monthNavBtn, { opacity: pressed ? 0.5 : 1 }]}>
+          <IconSymbol name="chevron.right" size={18} color={colors.primary} />
         </Pressable>
       </View>
 
@@ -715,8 +674,7 @@ export default function ScheduleScreen() {
           data={listData}
           keyExtractor={(item, idx) => {
             if (item.type === "summary") return "summary";
-            if (item.type === "filter-result") return "filter-result";
-            if (item.type === "section") return `section-${item.period}`;
+            if (item.type === "section") return `section-${item.title}`;
             if (item.type === "item") return item.data.id;
             return `empty-${idx}`;
           }}
@@ -802,12 +760,31 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  monthNavBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  monthNavLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 10,
     marginBottom: 4,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -835,43 +812,6 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 13,
     fontWeight: "500",
-  },
-  filterResultCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    gap: 8,
-    marginBottom: 4,
-  },
-  filterResultRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  filterResultLabel: {
-    flex: 1,
-    fontSize: 13,
-  },
-  filterClearText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  filterResultTotal: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 8,
-    borderTopWidth: 0.5,
-  },
-  filterResultTotalLabel: {
-    fontSize: 13,
-  },
-  filterResultTotalValue: {
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  filterResultCount: {
-    fontSize: 12,
   },
   loading: {
     flex: 1,
@@ -922,21 +862,6 @@ const styles = StyleSheet.create({
     width: 1,
     height: 32,
     marginHorizontal: 4,
-  },
-  summaryTotal: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-  },
-  summaryTotalLabel: {
-    fontSize: 13,
-  },
-  summaryTotalValue: {
-    fontSize: 17,
-    fontWeight: "800",
   },
   sectionHeader: {
     flexDirection: "row",
