@@ -700,17 +700,20 @@ export default function StatementScreen() {
         fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       }
 
-      const { importId, total, autoLearned, overlappingDates, existingMaxDate } = await uploadMut.mutateAsync({
+      const { importId, total, autoLearned, aiCategorized, overlappingDates, existingMaxDate } = await uploadMut.mutateAsync({
         accountId: selectedAccount,
         fileBase64,
         fileName,
         fileType,
       });
-      const learnedMsg = autoLearned > 0 ? `\n${autoLearned} já categorizadas automaticamente pelo histórico.` : "";
+      const learnedMsg = autoLearned > 0 ? `\n✓ ${autoLearned} categorizadas pelo histórico.` : "";
+      const aiMsg = aiCategorized > 0 ? `\n✨ ${aiCategorized} categorizadas pela IA.` : "";
+      const pendingCount = total - autoLearned - aiCategorized;
+      const pendingMsg = pendingCount > 0 ? `\n○ ${pendingCount} aguardando revisão manual.` : "";
       const overlapMsg = overlappingDates && existingMaxDate
         ? `\n\n⚠️ Atenção: esta conta já tinha dados até ${existingMaxDate.slice(8, 10)}/${existingMaxDate.slice(5, 7)}/${existingMaxDate.slice(0, 4)}. Verifique se há lançamentos duplicados na triagem.`
         : "";
-      showConfirm("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.${learnedMsg}${overlapMsg}\n\nAbrir triagem agora?`,
+      showConfirm("Importado!", `${total} transação(ões) encontrada(s).${learnedMsg}${aiMsg}${pendingMsg}${overlapMsg}\n\nAbrir triagem agora?`,
         () => setTriageImportId(importId));
     } catch (e: any) {
       showAlert("Erro", e?.message ?? "Falha ao importar extrato.");

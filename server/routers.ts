@@ -1396,7 +1396,8 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
         await db.insertStatementRows(ctx.user.id, importId, input.accountId, enrichedRows);
 
         const autoLearned = enrichedRows.filter((r) => parseFloat(r.confidence) >= 0.97).length;
-        return { importId, total: enrichedRows.length, autoLearned, overlappingDates, existingMaxDate };
+        const aiCategorized = enrichedRows.filter((r) => { const c = parseFloat(r.confidence); return c >= 0.4 && c < 0.97; }).length;
+        return { importId, total: enrichedRows.length, autoLearned, aiCategorized, overlappingDates, existingMaxDate };
       }),
 
     approveRow: protectedProcedure
