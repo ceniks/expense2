@@ -862,7 +862,9 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
 
   // ─── Contas Mensais ────────────────────────────────────────────────────────
   monthlyBills: router({
-    list: protectedProcedure.query(({ ctx }) => db.listMonthlyBills(ctx.user.id)),
+    list: protectedProcedure
+      .input(z.object({ yearMonth: z.string().optional() }).optional())
+      .query(({ ctx, input }) => db.listMonthlyBills(ctx.user.id, input?.yearMonth)),
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1).max(300),

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   Modal,
   StyleSheet,
   FlatList,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
@@ -29,6 +28,23 @@ function progressColor(pct: number) {
   if (pct >= 0.6) return "#3B82F6";
   if (pct >= 0.3) return "#F59E0B";
   return "#EF4444";
+}
+
+function currentYearMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function addMonths(ym: string, delta: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
 const FALLBACK_CATEGORIES = [
@@ -86,6 +102,8 @@ const emptyBillForm = (): BillFormData => ({
 export default function FinancingsScreen() {
   const colors = useColors();
   const [tab, setTab] = useState<"financings" | "bills">("financings");
+  const [selectedYearMonth, setSelectedYearMonth] = useState(currentYearMonth());
+  const isCurrentMonth = selectedYearMonth === currentYearMonth();
 
   // ── Financing queries ──
   const { data: financings = [], refetch: refetchFinancings, isLoading: loadingFin } =
@@ -93,11 +111,14 @@ export default function FinancingsScreen() {
   const createFinancing = trpc.financings.create.useMutation({ onSuccess: () => refetchFinancings() });
   const updateFinancing = trpc.financings.update.useMutation({ onSuccess: () => refetchFinancings() });
   const registerPayment = trpc.financings.registerPayment.useMutation({ onSuccess: () => refetchFinancings() });
+  const markFinancingPaid = trpc.financings.markInstallmentPaid.useMutation({ onSuccess: () => refetchFinancings() });
   const deleteFinancing = trpc.financings.delete.useMutation({ onSuccess: () => refetchFinancings() });
 
   // ── Monthly bill queries ──
   const { data: bills = [], refetch: refetchBills, isLoading: loadingBills } =
-    trpc.monthlyBills.list.useQuery();
+    trpc.monthlyBills.list.useQuery({ yearMonth: selectedYearMonth });
+  const payBillNoRecord = trpc.monthlyBills.payNoRecord.useMutation({ onSuccess: () => refetchBills() });
+  const unpayBill = trpc.monthlyBills.unpay.useMutation({ onSuccess: () => refetchBills() });
 
   // ── Dynamic categories ──
   const { data: categoriesData = [], refetch: refetchCategories } = trpc.categories.list.useQuery(
@@ -110,7 +131,6 @@ export default function FinancingsScreen() {
   const createBill = trpc.monthlyBills.create.useMutation({ onSuccess: () => refetchBills() });
   const updateBill = trpc.monthlyBills.update.useMutation({ onSuccess: () => refetchBills() });
   const payBill = trpc.monthlyBills.pay.useMutation({ onSuccess: () => refetchBills() });
-  const unpayBill = trpc.monthlyBills.unpay.useMutation({ onSuccess: () => refetchBills() });
   const deleteBill = trpc.monthlyBills.delete.useMutation({ onSuccess: () => refetchBills() });
 
   // ── Financing modal state ──
@@ -125,6 +145,64 @@ export default function FinancingsScreen() {
 
   // ── Delete confirm modal ──
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "fin" | "bill"; id: number; name: string } | null>(null);
+
+  // ── Month-based section grouping ──
+  const now = new Date();
+  const [selYear, selMonth] = selectedYearMonth.split("-").map(Number);
+
+  const { overdueFinancings, dueFinancings, paidFinancings } = useMemo(() => {
+    const overdue: typeof financings = [];
+    const due: typeof financings = [];
+    const paid: typeof financings = [];
+    for (const f of financings) {
+      const remaining = f.totalInstallments - f.paidInstallments;
+      if (remaining === 0) {
+        paid.push(f);
+      } else {
+        // Check if due day has passed for selected month
+        const isSelectedMonthCurrent =
+          selYear === now.getFullYear() && selMonth === now.getMonth() + 1;
+        const isSelectedMonthPast =
+          selYear < now.getFullYear() ||
+          (selYear === now.getFullYear() && selMonth < now.getMonth() + 1);
+
+        if (isSelectedMonthPast) {
+          overdue.push(f);
+        } else if (isSelectedMonthCurrent && f.dueDay < now.getDate()) {
+          overdue.push(f);
+        } else {
+          due.push(f);
+        }
+      }
+    }
+    return { overdueFinancings: overdue, dueFinancings: due, paidFinancings: paid };
+  }, [financings, selectedYearMonth]);
+
+  const { overdueBills, dueBills, paidBills } = useMemo(() => {
+    const overdue: typeof bills = [];
+    const due: typeof bills = [];
+    const paid: typeof bills = [];
+    for (const b of bills) {
+      if (b.paidThisMonth) {
+        paid.push(b);
+      } else {
+        const isSelectedMonthCurrent =
+          selYear === now.getFullYear() && selMonth === now.getMonth() + 1;
+        const isSelectedMonthPast =
+          selYear < now.getFullYear() ||
+          (selYear === now.getFullYear() && selMonth < now.getMonth() + 1);
+
+        if (isSelectedMonthPast) {
+          overdue.push(b);
+        } else if (isSelectedMonthCurrent && b.dueDay < now.getDate()) {
+          overdue.push(b);
+        } else {
+          due.push(b);
+        }
+      }
+    }
+    return { overdueBills: overdue, dueBills: due, paidBills: paid };
+  }, [bills, selectedYearMonth]);
 
   // ── Financing handlers ──
   function openNewFin() {
@@ -158,7 +236,7 @@ export default function FinancingsScreen() {
       installmentAmount: installmentAmt,
       totalInstallments: totalInst,
       paidInstallments: parseInt(finForm.paidInstallments) || 0,
-      startDate: new Date().toISOString().slice(0, 10), // data de cadastro, não usada para cálculo de parcelas
+      startDate: new Date().toISOString().slice(0, 10),
       dueDay: parseInt(finForm.dueDay) || 10,
       category: finForm.category,
       profile: finForm.profile,
@@ -216,14 +294,16 @@ export default function FinancingsScreen() {
     setBillModal(false);
   }
 
-  function toggleBillPaid(bill: any) {
-    const now = new Date();
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    if (bill.paidThisMonth) {
-      unpayBill.mutate({ id: bill.id, yearMonth });
-    } else {
-      payBill.mutate({ id: bill.id, yearMonth });
-    }
+  function handleBillAlreadyPaid(bill: any) {
+    payBillNoRecord.mutate({ id: bill.id, yearMonth: selectedYearMonth });
+  }
+
+  function handleBillPay(bill: any) {
+    payBill.mutate({ id: bill.id, yearMonth: selectedYearMonth });
+  }
+
+  function handleBillUnpay(bill: any) {
+    unpayBill.mutate({ id: bill.id, yearMonth: selectedYearMonth });
   }
 
   function confirmDeleteBill(id: number, name: string) {
@@ -242,6 +322,155 @@ export default function FinancingsScreen() {
 
   const s = styles(colors);
 
+  // ── Section renderer helpers ──
+  function renderSectionHeader(title: string, color: string, count: number) {
+    return (
+      <View style={[s.sectionHeader, { borderLeftColor: color }]}>
+        <Text style={[s.sectionTitle, { color }]}>{title}</Text>
+        <View style={[s.sectionBadge, { backgroundColor: color + "20" }]}>
+          <Text style={[s.sectionCount, { color }]}>{count}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  function renderFinancingCard(item: any, sectionColor: string) {
+    const total = item.totalInstallments;
+    const paid = item.paidInstallments;
+    const remaining = total - paid;
+    const pct = total > 0 ? paid / total : 0;
+    const installAmt = parseFloat(item.installmentAmount);
+    const paidAmount = paid * installAmt;
+    const remainingAmount = remaining * installAmt;
+    const totalFinanced = total * installAmt;
+    const color = progressColor(pct);
+    return (
+      <View key={item.id} style={[s.card, { borderLeftColor: sectionColor, borderLeftWidth: 4 }]}>
+        <View style={s.cardHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.cardTitle}>{item.name}</Text>
+            <Text style={s.cardSub}>{item.category} · Vence dia {item.dueDay}</Text>
+          </View>
+          <View style={s.cardActions}>
+            <TouchableOpacity onPress={() => openEditFin(item)} style={s.iconBtn} activeOpacity={0.7}>
+              <IconSymbol name="pencil" size={16} color={colors.muted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => confirmDeleteFin(item.id, item.name)} style={s.iconBtn} activeOpacity={0.7}>
+              <IconSymbol name="trash.fill" size={16} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={s.progressBg}>
+          <View style={[s.progressFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: color }]} />
+        </View>
+        <Text style={[s.progressLabel, { color }]}>
+          {paid}/{total} parcelas pagas ({Math.round(pct * 100)}%)
+        </Text>
+
+        <View style={s.amountGrid}>
+          <View style={s.amountCell}>
+            <Text style={s.amountLabel}>Parcela</Text>
+            <Text style={s.amountValue}>{fmt(item.installmentAmount)}</Text>
+          </View>
+          <View style={s.amountCell}>
+            <Text style={s.amountLabel}>Total pago</Text>
+            <Text style={[s.amountValue, { color: "#22C55E" }]}>{fmt(paidAmount)}</Text>
+          </View>
+          <View style={s.amountCell}>
+            <Text style={s.amountLabel}>Saldo devedor</Text>
+            <Text style={[s.amountValue, { color: colors.error }]}>{fmt(remainingAmount)}</Text>
+          </View>
+          <View style={s.amountCell}>
+            <Text style={s.amountLabel}>Total financiado</Text>
+            <Text style={s.amountValue}>{fmt(totalFinanced)}</Text>
+          </View>
+        </View>
+
+        {remaining > 0 && (
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              style={[s.actionBtn, { backgroundColor: "#22C55E20", borderColor: "#22C55E", flex: 1 }]}
+              onPress={() => markFinancingPaid.mutate({ id: item.id })}
+              activeOpacity={0.8}
+            >
+              <IconSymbol name="checkmark" size={14} color="#22C55E" />
+              <Text style={[s.actionBtnText, { color: "#22C55E" }]}>Já Pago</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.actionBtn, { backgroundColor: color + "20", borderColor: color, flex: 1 }]}
+              onPress={() => registerPayment.mutate({ id: item.id })}
+              activeOpacity={0.8}
+            >
+              <IconSymbol name="dollarsign.circle" size={14} color={color} />
+              <Text style={[s.actionBtnText, { color }]}>Pagar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {remaining === 0 && (
+          <View style={[s.actionBtn, { backgroundColor: "#22C55E20", borderColor: "#22C55E" }]}>
+            <IconSymbol name="checkmark.circle.fill" size={14} color="#22C55E" />
+            <Text style={[s.actionBtnText, { color: "#22C55E" }]}>Financiamento quitado!</Text>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  function renderBillCard(item: any, sectionColor: string) {
+    return (
+      <View key={item.id} style={[s.card, { borderLeftColor: sectionColor, borderLeftWidth: 4 }]}>
+        <View style={s.cardHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.cardTitle}>{item.name}</Text>
+            <Text style={s.cardSub}>{item.category} · Vence dia {item.dueDay}</Text>
+          </View>
+          <View style={s.cardActions}>
+            <TouchableOpacity onPress={() => openEditBill(item)} style={s.iconBtn} activeOpacity={0.7}>
+              <IconSymbol name="pencil" size={16} color={colors.muted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => confirmDeleteBill(item.id, item.name)} style={s.iconBtn} activeOpacity={0.7}>
+              <IconSymbol name="trash.fill" size={16} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={s.billRow}>
+          <Text style={s.billAmount}>{fmt(item.amount)}</Text>
+          {item.paidThisMonth ? (
+            <TouchableOpacity
+              style={[s.billToggle, { backgroundColor: "#22C55E", borderColor: "#22C55E" }]}
+              onPress={() => handleBillUnpay(item)}
+              activeOpacity={0.8}
+            >
+              <IconSymbol name="checkmark" size={14} color="#fff" />
+              <Text style={[s.billToggleText, { color: "#fff" }]}>Pago</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={[s.billToggle, { backgroundColor: "#22C55E20", borderColor: "#22C55E" }]}
+                onPress={() => handleBillAlreadyPaid(item)}
+                activeOpacity={0.8}
+              >
+                <IconSymbol name="checkmark" size={14} color="#22C55E" />
+                <Text style={[s.billToggleText, { color: "#22C55E" }]}>Já Pago</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.billToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => handleBillPay(item)}
+                activeOpacity={0.8}
+              >
+                <IconSymbol name="dollarsign.circle" size={14} color={colors.muted} />
+                <Text style={[s.billToggleText, { color: colors.muted }]}>Pagar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <ScreenContainer>
       {/* Header */}
@@ -253,6 +482,30 @@ export default function FinancingsScreen() {
           activeOpacity={0.8}
         >
           <IconSymbol name="plus" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Month Navigator */}
+      <View style={s.monthNav}>
+        <TouchableOpacity
+          onPress={() => setSelectedYearMonth(addMonths(selectedYearMonth, -1))}
+          style={s.monthNavBtn}
+          activeOpacity={0.7}
+        >
+          <IconSymbol name="chevron.left" size={18} color={colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setSelectedYearMonth(currentYearMonth())} activeOpacity={0.8}>
+          <Text style={s.monthLabel}>{monthLabel(selectedYearMonth)}</Text>
+          {!isCurrentMonth && (
+            <Text style={s.monthHint}>toque para voltar ao atual</Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setSelectedYearMonth(addMonths(selectedYearMonth, 1))}
+          style={s.monthNavBtn}
+          activeOpacity={0.7}
+        >
+          <IconSymbol name="chevron.right" size={18} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -282,161 +535,64 @@ export default function FinancingsScreen() {
       {tab === "financings" ? (
         loadingFin ? (
           <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        ) : financings.length === 0 ? (
+          <View style={s.empty}>
+            <Text style={s.emptyIcon}>🏦</Text>
+            <Text style={s.emptyText}>Nenhum financiamento cadastrado</Text>
+            <Text style={s.emptyHint}>Toque em + para adicionar</Text>
+          </View>
         ) : (
-          <FlatList
-            data={financings}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={s.list}
-            ListEmptyComponent={
-              <View style={s.empty}>
-                <Text style={s.emptyIcon}>🏦</Text>
-                <Text style={s.emptyText}>Nenhum financiamento cadastrado</Text>
-                <Text style={s.emptyHint}>Toque em + para adicionar</Text>
-              </View>
-            }
-            renderItem={({ item }) => {
-                  const total = item.totalInstallments;
-              const paid = item.paidInstallments;
-              const remaining = total - paid;
-              const pct = total > 0 ? paid / total : 0;
-              const installAmt = parseFloat(item.installmentAmount);
-              const paidAmount = paid * installAmt;
-              const remainingAmount = remaining * installAmt;
-              const totalFinanced = total * installAmt;
-              const color = progressColor(pct);
-              return (
-                <View style={[s.card, { borderLeftColor: color, borderLeftWidth: 4 }]}>
-                  <View style={s.cardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.cardTitle}>{item.name}</Text>
-                      <Text style={s.cardSub}>{item.category} · Vence dia {item.dueDay}</Text>
-                    </View>
-                    <View style={s.cardActions}>
-                      <TouchableOpacity onPress={() => openEditFin(item)} style={s.iconBtn} activeOpacity={0.7}>
-                        <IconSymbol name="pencil" size={16} color={colors.muted} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => confirmDeleteFin(item.id, item.name)} style={s.iconBtn} activeOpacity={0.7}>
-                        <IconSymbol name="trash.fill" size={16} color={colors.error} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* Progress bar */}
-                  <View style={s.progressBg}>
-                    <View style={[s.progressFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: color }]} />
-                  </View>
-                  <Text style={[s.progressLabel, { color }]}>
-                    {paid}/{total} parcelas pagas ({Math.round(pct * 100)}%)
-                  </Text>
-
-                  {/* Amounts grid */}
-                  <View style={s.amountGrid}>
-                    <View style={s.amountCell}>
-                      <Text style={s.amountLabel}>Parcela</Text>
-                      <Text style={s.amountValue}>{fmt(item.installmentAmount)}</Text>
-                    </View>
-                    <View style={s.amountCell}>
-                      <Text style={s.amountLabel}>Total pago</Text>
-                      <Text style={[s.amountValue, { color: "#22C55E" }]}>{fmt(paidAmount)}</Text>
-                    </View>
-                    <View style={s.amountCell}>
-                      <Text style={s.amountLabel}>Saldo devedor</Text>
-                      <Text style={[s.amountValue, { color: colors.error }]}>{fmt(remainingAmount)}</Text>
-                    </View>
-                    <View style={s.amountCell}>
-                      <Text style={s.amountLabel}>Total financiado</Text>
-                      <Text style={s.amountValue}>{fmt(totalFinanced)}</Text>
-                    </View>
-                  </View>
-
-                  {/* Register payment button */}
-                  {remaining > 0 && (
-                    <TouchableOpacity
-                      style={[s.payBtn, { backgroundColor: color + "20", borderColor: color }]}
-                      onPress={() => registerPayment.mutate({ id: item.id })}
-                      activeOpacity={0.8}
-                    >
-                      <IconSymbol name="checkmark" size={14} color={color} />
-                      <Text style={[s.payBtnText, { color }]}>Registrar pagamento da parcela</Text>
-                    </TouchableOpacity>
-                  )}
-                  {remaining === 0 && (
-                    <View style={[s.payBtn, { backgroundColor: "#22C55E20", borderColor: "#22C55E" }]}>
-                      <IconSymbol name="checkmark.circle.fill" size={14} color="#22C55E" />
-                      <Text style={[s.payBtnText, { color: "#22C55E" }]}>Financiamento quitado!</Text>
-                    </View>
-                  )}
-                </View>
-              );
-            }}
-          />
+          <ScrollView contentContainerStyle={s.list}>
+            {overdueFinancings.length > 0 && (
+              <>
+                {renderSectionHeader("Vencidos", "#EF4444", overdueFinancings.length)}
+                {overdueFinancings.map((f) => renderFinancingCard(f, "#EF4444"))}
+              </>
+            )}
+            {dueFinancings.length > 0 && (
+              <>
+                {renderSectionHeader("A Pagar", "#F59E0B", dueFinancings.length)}
+                {dueFinancings.map((f) => renderFinancingCard(f, "#F59E0B"))}
+              </>
+            )}
+            {paidFinancings.length > 0 && (
+              <>
+                {renderSectionHeader("Quitados", "#22C55E", paidFinancings.length)}
+                {paidFinancings.map((f) => renderFinancingCard(f, "#22C55E"))}
+              </>
+            )}
+          </ScrollView>
         )
       ) : (
         loadingBills ? (
           <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        ) : bills.length === 0 ? (
+          <View style={s.empty}>
+            <Text style={s.emptyIcon}>📋</Text>
+            <Text style={s.emptyText}>Nenhuma conta mensal cadastrada</Text>
+            <Text style={s.emptyHint}>Toque em + para adicionar</Text>
+          </View>
         ) : (
-          <FlatList
-            data={bills}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={s.list}
-            ListEmptyComponent={
-              <View style={s.empty}>
-                <Text style={s.emptyIcon}>📋</Text>
-                <Text style={s.emptyText}>Nenhuma conta mensal cadastrada</Text>
-                <Text style={s.emptyHint}>Toque em + para adicionar</Text>
-              </View>
-            }
-            renderItem={({ item }) => {
-              const now = new Date();
-              const daysUntilDue = item.dueDay - now.getDate();
-              const isOverdue = !item.paidThisMonth && daysUntilDue < 0;
-              const isDueSoon = !item.paidThisMonth && daysUntilDue >= 0 && daysUntilDue <= 3;
-              const statusColor = item.paidThisMonth ? "#22C55E" : isOverdue ? colors.error : isDueSoon ? "#F59E0B" : colors.muted;
-              return (
-                <View style={[s.card, { borderLeftColor: statusColor, borderLeftWidth: 4 }]}>
-                  <View style={s.cardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.cardTitle}>{item.name}</Text>
-                      <Text style={s.cardSub}>
-                        {item.category} · Vence dia {item.dueDay}
-                        {isOverdue && " · Vencida"}
-                        {isDueSoon && ` · Vence em ${daysUntilDue}d`}
-                      </Text>
-                    </View>
-                    <View style={s.cardActions}>
-                      <TouchableOpacity onPress={() => openEditBill(item)} style={s.iconBtn} activeOpacity={0.7}>
-                        <IconSymbol name="pencil" size={16} color={colors.muted} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => confirmDeleteBill(item.id, item.name)} style={s.iconBtn} activeOpacity={0.7}>
-                        <IconSymbol name="trash.fill" size={16} color={colors.error} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={s.billRow}>
-                    <Text style={s.billAmount}>{fmt(item.amount)}</Text>
-                    <TouchableOpacity
-                      style={[
-                        s.billToggle,
-                        { backgroundColor: item.paidThisMonth ? "#22C55E" : colors.surface, borderColor: item.paidThisMonth ? "#22C55E" : colors.border },
-                      ]}
-                      onPress={() => toggleBillPaid(item)}
-                      activeOpacity={0.8}
-                    >
-                      {item.paidThisMonth ? (
-                        <>
-                          <IconSymbol name="checkmark" size={14} color="#fff" />
-                          <Text style={[s.billToggleText, { color: "#fff" }]}>Pago</Text>
-                        </>
-                      ) : (
-                        <Text style={[s.billToggleText, { color: colors.muted }]}>Marcar como pago</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            }}
-          />
+          <ScrollView contentContainerStyle={s.list}>
+            {overdueBills.length > 0 && (
+              <>
+                {renderSectionHeader("Vencidas", "#EF4444", overdueBills.length)}
+                {overdueBills.map((b) => renderBillCard(b, "#EF4444"))}
+              </>
+            )}
+            {dueBills.length > 0 && (
+              <>
+                {renderSectionHeader("A Pagar", "#F59E0B", dueBills.length)}
+                {dueBills.map((b) => renderBillCard(b, "#F59E0B"))}
+              </>
+            )}
+            {paidBills.length > 0 && (
+              <>
+                {renderSectionHeader("Pagas", "#22C55E", paidBills.length)}
+                {paidBills.map((b) => renderBillCard(b, "#22C55E"))}
+              </>
+            )}
+          </ScrollView>
         )
       )}
 
@@ -704,16 +860,49 @@ function styles(colors: ReturnType<typeof useColors>) {
       alignItems: "center",
       justifyContent: "center",
     },
+    monthNav: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      marginHorizontal: 16,
+      marginBottom: 4,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+    },
+    monthNavBtn: { padding: 6 },
+    monthLabel: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.foreground,
+      textAlign: "center",
+      textTransform: "capitalize",
+    },
+    monthHint: { fontSize: 11, color: colors.primary, textAlign: "center", marginTop: 2 },
     tabRow: {
       flexDirection: "row",
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       marginHorizontal: 20,
       marginBottom: 8,
+      marginTop: 8,
     },
     tabBtn: { flex: 1, paddingVertical: 10, alignItems: "center" },
     tabLabel: { fontSize: 14, fontWeight: "600" },
     list: { padding: 16, gap: 12 },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingLeft: 10,
+      borderLeftWidth: 3,
+      marginBottom: 4,
+      marginTop: 8,
+    },
+    sectionTitle: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+    sectionBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+    sectionCount: { fontSize: 12, fontWeight: "700" },
     card: {
       backgroundColor: colors.surface,
       borderRadius: 14,
@@ -737,7 +926,7 @@ function styles(colors: ReturnType<typeof useColors>) {
     amountCell: { flex: 1, minWidth: "45%" },
     amountLabel: { fontSize: 11, color: colors.muted },
     amountValue: { fontSize: 14, fontWeight: "700", color: colors.foreground },
-    payBtn: {
+    actionBtn: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -746,14 +935,14 @@ function styles(colors: ReturnType<typeof useColors>) {
       borderRadius: 8,
       borderWidth: 1,
     },
-    payBtnText: { fontSize: 13, fontWeight: "600" },
+    actionBtnText: { fontSize: 13, fontWeight: "600" },
     billRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     billAmount: { fontSize: 20, fontWeight: "800", color: colors.foreground },
     billToggle: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      paddingHorizontal: 14,
+      paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 20,
       borderWidth: 1,

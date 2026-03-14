@@ -847,7 +847,7 @@ export async function deleteFinancing(userId: number, financingId: number) {
 
 // ─── Contas Mensais ────────────────────────────────────────────────────────────
 
-export async function listMonthlyBills(userId: number) {
+export async function listMonthlyBills(userId: number, targetYearMonth?: string) {
   const db = await getDb();
   if (!db) return [];
   const group = await getOrCreateUserGroup(userId);
@@ -856,7 +856,7 @@ export async function listMonthlyBills(userId: number) {
     ? await db.select().from(monthlyBills).where(eq(monthlyBills.groupId, groupId)).orderBy(monthlyBills.dueDay)
     : await db.select().from(monthlyBills).where(eq(monthlyBills.userId, userId)).orderBy(monthlyBills.dueDay);
   const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const yearMonth = targetYearMonth ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const billIds = bills.map((b) => b.id);
   let paymentsThisMonth: Array<{ billId: number; yearMonth: string; amount: string }> = [];
   if (billIds.length > 0) {
