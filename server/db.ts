@@ -1697,6 +1697,20 @@ export async function deleteBankAccount(id: number, userId: number) {
   }
 }
 
+export async function saveBankAccountCsvFormat(id: number, csvFormat: object) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(bankAccounts).set({ csvFormat: JSON.stringify(csvFormat) }).where(eq(bankAccounts.id, id));
+}
+
+export async function getBankAccountCsvFormat(id: number): Promise<object | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ csvFormat: bankAccounts.csvFormat }).from(bankAccounts).where(eq(bankAccounts.id, id)).limit(1);
+  if (!rows[0]?.csvFormat) return null;
+  try { return JSON.parse(rows[0].csvFormat); } catch { return null; }
+}
+
 // ─── Importação de Extrato ────────────────────────────────────────────────────
 
 export async function createStatementImport(userId: number, data: {

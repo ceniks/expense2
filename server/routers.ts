@@ -1136,83 +1136,114 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         let rows: { date: string; description: string; amount: string; type: "debit" | "credit" }[] = [];
 
         if (input.fileType === "csv") {
-          // Parse CSV - suporta múltiplos formatos (PagSeguro, genérico)
-          const text = fileBuffer.toString("utf-8").replace(/\r/g, "");
-          const lines = text.split("\n").filter((l) => l.trim());
-          if (lines.length < 2) throw new Error("CSV vazio ou sem dados.");
+          // Parse CSV - suporta múltiplos formatos (PagSeguro, Mercado Pago, genérico)
+          // Tenta UTF-8 primeiro, depois latin1 (Windows-1252) para arquivos com acentos
+          let text = fileBuffer.toString("utf-8").replace(/\r/g, "");
+          if (text.includes("\uFFFD")) text = fileBuffer.toString("latin1").replace(/\r/g, "");
+          const allLines = text.split("\n");
 
-          // Detectar separador (ponto-e-vírgula ou vírgula)
-          const sep = lines[0].includes(";") ? ";" : ",";
-
-          // Ler cabeçalho para detectar formato
-          const header = lines[0].split(sep).map((c) => c.trim().replace(/"/g, "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
-
-          // Detectar índices das colunas pelo cabeçalho
-          const findCol = (...names: string[]) => {
-            for (const name of names) {
-              const idx = header.findIndex((h) => h.includes(name));
-              if (idx >= 0) return idx;
-            }
-            return -1;
+          // Helper: converte data para YYYY-MM-DD (suporta DD/MM/YYYY e DD-MM-YYYY)
+          const normalizeDate = (rawDate: string) => {
+            const ds = rawDate.includes("/") ? "/" : rawDate.includes("-") ? "-" : null;
+            if (!ds) return rawDate;
+            const parts = rawDate.split(ds);
+            if (parts.length !== 3) return rawDate;
+            if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+            if (parts[0].length === 4) return rawDate; // já YYYY-MM-DD
+            return `${parts[0]}-${parts[1].padStart(2,"0")}-${parts[2].padStart(2,"0")}`;
           };
 
-          const dateIdx   = findCol("DATA", "DATE", "DT");
-          const descIdx   = findCol("DESCRICAO", "DESCRIPTION", "HISTORICO", "DESCRI");
-          const amtIdx    = findCol("VALOR", "AMOUNT", "VALUE", "MONTANTE");
-          const typeIdx   = findCol("TIPO", "TYPE");
-
-          // Fallback: assume posições genéricas (data, desc, valor)
-          const colDate = dateIdx >= 0 ? dateIdx : 0;
-          const colDesc = descIdx >= 0 ? descIdx : 1;
-          const colAmt  = amtIdx  >= 0 ? amtIdx  : 2;
-          const colType = typeIdx >= 0 ? typeIdx : -1;
-
-          for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(sep).map((c) => c.trim().replace(/"/g, ""));
-            if (cols.length <= Math.max(colDate, colDesc, colAmt)) continue;
-
-            const rawDate = cols[colDate];
-            const rawDesc = cols[colDesc];
-            const tipoRaw = colType >= 0 ? cols[colType] : "";
-            // Combinar TIPO + DESCRICAO para dar contexto completo à IA
-            const description = tipoRaw && rawDesc ? `${tipoRaw} - ${rawDesc}` : (rawDesc || tipoRaw);
-            let amountStr = cols[colAmt];
-
-            // Remover espaços e normalizar número BR (1.234,56 → 1234.56)
-            amountStr = amountStr.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-            const amount = parseFloat(amountStr);
-            if (isNaN(amount) || !rawDate || !description) continue;
-
-            // Converter data DD/MM/YYYY → YYYY-MM-DD
-            let dateFormatted = rawDate;
-            if (rawDate.includes("/")) {
-              const parts = rawDate.split("/");
-              if (parts.length === 3) {
-                dateFormatted = parts[2].length === 4
-                  ? `${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`
-                  : `${parts[0]}-${parts[1].padStart(2,"0")}-${parts[2].padStart(2,"0")}`;
+          // Helper: parseia linhas usando um perfil {separator, headerLineIdx, dateColName, descColName, amtColName, typeColName}
+          const parseWithProfile = (profile: { separator: string; headerLineIdx: number; dateColName: string | null; descColName: string | null; amtColName: string | null; typeColName: string | null }) => {
+            const ls = allLines.slice(profile.headerLineIdx).filter((l) => l.trim());
+            if (ls.length < 2) return [];
+            const sep2 = profile.separator;
+            const hdr = ls[0].split(sep2).map((c) => c.trim().replace(/"/g, "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+            const ci = (name: string | null) => name ? hdr.indexOf(name) : -1;
+            const colD = ci(profile.dateColName);
+            const colS = ci(profile.descColName);
+            const colA = ci(profile.amtColName);
+            const colT = ci(profile.typeColName);
+            const result: typeof rows = [];
+            for (let i = 1; i < ls.length; i++) {
+              const cols = ls[i].split(sep2).map((c) => c.trim().replace(/"/g, ""));
+              if (cols.length <= Math.max(colD < 0 ? 0 : colD, colS < 0 ? 0 : colS, colA < 0 ? 0 : colA)) continue;
+              const rawDate = colD >= 0 ? cols[colD] : "";
+              const rawDesc = colS >= 0 ? cols[colS] : "";
+              const tipoRaw = colT >= 0 ? cols[colT] : "";
+              const description = tipoRaw && rawDesc ? `${tipoRaw} - ${rawDesc}` : (rawDesc || tipoRaw);
+              let amountStr = colA >= 0 ? cols[colA] : "";
+              amountStr = amountStr.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+              const amount = parseFloat(amountStr);
+              if (isNaN(amount) || !rawDate || !description) continue;
+              const dateFormatted = normalizeDate(rawDate);
+              let type: "debit" | "credit";
+              if (colT >= 0 && cols[colT]) {
+                const tv = cols[colT].toLowerCase();
+                type = (tv.includes("receb") || tv.includes("credit") || tv.includes("venda") || tv.includes("resgate") || tv.includes("rendimento") || tv.includes("desbloqueado") || tv.includes("estorno pix") || tv.includes("renda fixa"))
+                  ? "credit" : "debit";
+                if (amount < 0) type = "debit";
+                if (amount > 0 && type === "debit" && !tv.includes("cancelamento") && !tv.includes("ajuste") && !tv.includes("bloqueio")) type = "credit";
+              } else {
+                type = amount < 0 ? "debit" : "credit";
               }
+              result.push({ date: dateFormatted, description, amount: Math.abs(amount).toFixed(2), type });
             }
+            return result;
+          };
 
-            // Determinar tipo: usa coluna TIPO se existir (PagSeguro), senão pelo sinal do valor
-            let type: "debit" | "credit";
-            if (colType >= 0 && cols[colType]) {
-              const tipoVal = cols[colType].toLowerCase();
-              type = (tipoVal.includes("receb") || tipoVal.includes("credit") || tipoVal.includes("venda") || tipoVal.includes("resgate") || tipoVal.includes("rendimento") || tipoVal.includes("desbloqueado") || tipoVal.includes("estorno pix") || tipoVal.includes("renda fixa"))
-                ? "credit" : "debit";
-              // Se valor é negativo, sempre debit
-              if (amount < 0) type = "debit";
-              if (amount > 0 && type === "debit" && !tipoVal.includes("cancelamento") && !tipoVal.includes("ajuste") && !tipoVal.includes("bloqueio")) type = "credit";
-            } else {
-              type = amount < 0 ? "debit" : "credit";
+          // ── 1. Tentar perfil salvo da conta ────────────────────────────────────
+          const savedProfile = await db.getBankAccountCsvFormat(input.accountId) as any;
+          if (savedProfile) {
+            rows = parseWithProfile(savedProfile);
+          }
+
+          // ── 2. Auto-detecção (sem perfil ou perfil não produziu linhas) ────────
+          if (rows.length === 0) {
+            const HEADER_KEYWORDS = ["RELEASE_DATE", "DATA", "DATE", "DT", "DESCRICAO", "DESCRIPTION", "VALOR", "AMOUNT"];
+            let headerLineIdx = 0;
+            for (let i = 0; i < Math.min(10, allLines.length); i++) {
+              const upper = allLines[i].toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              if (HEADER_KEYWORDS.some((kw) => upper.includes(kw))) { headerLineIdx = i; break; }
             }
+            const ls = allLines.slice(headerLineIdx).filter((l) => l.trim());
+            if (ls.length < 2) throw new Error("CSV vazio ou sem dados.");
+            const sep = ls[0].includes(";") ? ";" : ",";
+            const hdr = ls[0].split(sep).map((c) => c.trim().replace(/"/g, "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+            const findCol = (...names: string[]) => { for (const n of names) { const i = hdr.findIndex((h) => h.includes(n)); if (i >= 0) return i; } return -1; };
+            const dI = findCol("RELEASE_DATE", "DATA", "DATE", "DT");
+            const sI = findCol("TRANSACTION_TYPE", "DESCRICAO", "DESCRIPTION", "HISTORICO", "DESCRI");
+            const aI = findCol("TRANSACTION_NET_AMOUNT", "NET_AMOUNT", "VALOR", "AMOUNT", "VALUE", "MONTANTE");
+            const tI = findCol("TIPO", "TYPE");
+            const detectedProfile = {
+              separator: sep,
+              headerLineIdx,
+              dateColName: dI >= 0 ? hdr[dI] : null,
+              descColName: sI >= 0 ? hdr[sI] : null,
+              amtColName:  aI >= 0 ? hdr[aI] : null,
+              typeColName: tI >= 0 ? hdr[tI] : null,
+            };
+            rows = parseWithProfile(detectedProfile);
 
-            rows.push({
-              date: dateFormatted,
-              description,
-              amount: Math.abs(amount).toFixed(2),
-              type,
-            });
+            // ── 3. Fallback IA: formato desconhecido ─────────────────────────────
+            if (rows.length === 0) {
+              const sampleText = allLines.slice(0, 25).join("\n");
+              try {
+                const aiMessages: Message[] = [{ role: "user", content: [{ type: "text", text: `Analise este extrato bancário CSV e retorne um JSON com o perfil de formato:
+{ "separator": ";" ou ",", "headerLineIdx": número da linha do cabeçalho (0-based), "dateColName": "NOME_COLUNA_DATA", "descColName": "NOME_COLUNA_DESCRICAO", "amtColName": "NOME_COLUNA_VALOR", "typeColName": "NOME_COLUNA_TIPO_ou_null" }
+Os nomes de coluna devem ser EXATAMENTE como aparecem no cabeçalho (em maiúsculas).
+CSV:\n${sampleText}\nRetorne SOMENTE o JSON, sem texto extra.` }] }];
+                const aiResult = await invokeLLM({ messages: aiMessages, response_format: { type: "json_object" } });
+                const aiProfile = JSON.parse(aiResult as unknown as string);
+                rows = parseWithProfile(aiProfile);
+                if (rows.length > 0) {
+                  await db.saveBankAccountCsvFormat(input.accountId, aiProfile);
+                }
+              } catch {}
+            } else if (!savedProfile) {
+              // Salvar perfil auto-detectado para próximos uploads
+              await db.saveBankAccountCsvFormat(input.accountId, detectedProfile);
+            }
           }
         } else {
           // PDF: converte para imagem e usa IA para extrair linhas

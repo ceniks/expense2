@@ -307,6 +307,7 @@ export const bankAccounts = mysqlTable("bank_accounts", {
   profile: mysqlEnum("profile", ["Pessoal", "Empresa"]).notNull().default("Pessoal"),
   color: varchar("color", { length: 20 }).notNull().default("#6366f1"),
   isActive: boolean("isActive").notNull().default(true),
+  csvFormat: text("csvFormat"),  // JSON com perfil de formato CSV detectado automaticamente
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
