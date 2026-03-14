@@ -1938,7 +1938,7 @@ export async function bulkApproveStatementRows(
   if (!db) throw new Error("Database not available");
   const groupId = await getUserGroupId(userId);
 
-  const learnedPatterns = new Set<string>();
+  const learnedPatterns = new Map<string, string>(); // pattern → suggestedDescription
 
   for (const rowId of rowIds) {
     const rows = await db.select().from(statementRows)
@@ -1961,13 +1961,13 @@ export async function bulkApproveStatementRows(
     // Aprende o padrão
     const pattern = normalizePattern(row.description);
     await upsertStatementRule(userId, { pattern, category, profile, suggestedDescription: description });
-    learnedPatterns.add(pattern);
+    learnedPatterns.set(pattern, description);
   }
 
   // Propaga para pendentes com mesmo padrão (uma vez por padrão)
   if (importId) {
-    for (const pattern of learnedPatterns) {
-      await propagateCategoryToSiblings(userId, importId, pattern, category, profile, category);
+    for (const [pattern, description] of learnedPatterns) {
+      await propagateCategoryToSiblings(userId, importId, pattern, category, profile, description);
     }
   }
 
