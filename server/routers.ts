@@ -568,9 +568,11 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
     ),
 
     /** Return unified schedule: invoices + financings + monthly bills */
-    unified: protectedProcedure.query(({ ctx }) =>
-      db.getUnifiedSchedule(ctx.user.id)
-    ),
+    unified: protectedProcedure
+      .input(z.object({ yearMonth: z.string().optional() }).optional())
+      .query(({ ctx, input }) =>
+        db.getUnifiedSchedule(ctx.user.id, input?.yearMonth)
+      ),
   }),
 
   // ─── Financiamentos ────────────────────────────────────────────────────────

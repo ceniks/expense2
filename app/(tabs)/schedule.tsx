@@ -314,7 +314,9 @@ export default function ScheduleScreen() {
   const colors = useColors();
   const utils = trpc.useUtils();
 
-  const { data: items = [], isLoading, refetch } = trpc.invoices.unified.useQuery();
+  const [selectedYearMonth, setSelectedYearMonth] = useState(currentYearMonth);
+
+  const { data: items = [], isLoading, refetch } = trpc.invoices.unified.useQuery({ yearMonth: selectedYearMonth });
 
   // Mutations for invoices
   const markPaidMutation = trpc.invoices.markPaid.useMutation({
@@ -360,7 +362,6 @@ export default function ScheduleScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<UnifiedItem["type"] | null>(null);
-  const [selectedYearMonth, setSelectedYearMonth] = useState(currentYearMonth);
 
   const todayStr = todayISO();
 

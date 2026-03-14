@@ -928,7 +928,7 @@ export type UnifiedScheduleItem = {
   yearMonth?: string;
 };
 
-export async function getUnifiedSchedule(userId: number): Promise<UnifiedScheduleItem[]> {
+export async function getUnifiedSchedule(userId: number, targetYearMonth?: string): Promise<UnifiedScheduleItem[]> {
   const db = await getDb();
   if (!db) return [];
 
@@ -1004,33 +1004,58 @@ export async function getUnifiedSchedule(userId: number): Promise<UnifiedSchedul
       if (nextMonth > 12) { nextMonth = 1; nextYear++; }
     }
 
-    // Gerar as parcelas restantes a partir da próxima
-    for (let offset = 0; offset < remaining; offset++) {
-      const instNum = paidInst + 1 + offset;
-      let instYear = nextYear;
-      let instMonth = nextMonth + offset;
-      while (instMonth > 12) { instMonth -= 12; instYear++; }
+    if (targetYearMonth) {
+      // Mostrar apenas a parcela do mês solicitado
+      const [ty, tm] = targetYearMonth.split("-").map(Number);
+      // Calcular qual parcela cai neste mês
+      // A parcela (paidInst+1) vence em nextYear/nextMonth, então offset = monthsDiff desde lá
+      const instOffset = (ty - nextYear) * 12 + (tm - nextMonth);
+      if (instOffset >= 0 && instOffset < remaining) {
+        const instNum = paidInst + 1 + instOffset;
+        const actualDueDay = Math.min(dueDay, new Date(ty, tm, 0).getDate());
+        const dueDate = `${ty}-${String(tm).padStart(2, "0")}-${String(actualDueDay).padStart(2, "0")}`;
+        result.push({
+          id: `financing-${f.id}-${instNum}`,
+          type: "financing",
+          name: f.name,
+          category: f.category,
+          profile: f.profile,
+          amount: f.installmentAmount,
+          dueDate,
+          isPaid: false,
+          financingId: f.id,
+          financingInstallmentNumber: instNum,
+          financingTotalInstallments: totalInst,
+        });
+      }
+    } else {
+      // Gerar as parcelas restantes a partir da próxima (mês atual + próximos 12)
+      for (let offset = 0; offset < remaining; offset++) {
+        const instNum = paidInst + 1 + offset;
+        let instYear = nextYear;
+        let instMonth = nextMonth + offset;
+        while (instMonth > 12) { instMonth -= 12; instYear++; }
 
-      const actualDueDay = Math.min(dueDay, new Date(instYear, instMonth, 0).getDate());
-      const dueDate = `${instYear}-${String(instMonth).padStart(2, "0")}-${String(actualDueDay).padStart(2, "0")}`;
+        const actualDueDay = Math.min(dueDay, new Date(instYear, instMonth, 0).getDate());
+        const dueDate = `${instYear}-${String(instMonth).padStart(2, "0")}-${String(actualDueDay).padStart(2, "0")}`;
 
-      // Mostrar apenas: mês atual + próximos 12 meses
-      const monthsDiff = (instYear - nowYear) * 12 + (instMonth - nowMonth);
-      if (monthsDiff > 12) break;
+        const monthsDiff = (instYear - nowYear) * 12 + (instMonth - nowMonth);
+        if (monthsDiff > 12) break;
 
-      result.push({
-        id: `financing-${f.id}-${instNum}`,
-        type: "financing",
-        name: f.name,
-        category: f.category,
-        profile: f.profile,
-        amount: f.installmentAmount,
-        dueDate,
-        isPaid: false,
-        financingId: f.id,
-        financingInstallmentNumber: instNum,
-        financingTotalInstallments: totalInst,
-      });
+        result.push({
+          id: `financing-${f.id}-${instNum}`,
+          type: "financing",
+          name: f.name,
+          category: f.category,
+          profile: f.profile,
+          amount: f.installmentAmount,
+          dueDate,
+          isPaid: false,
+          financingId: f.id,
+          financingInstallmentNumber: instNum,
+          financingTotalInstallments: totalInst,
+        });
+      }
     }
   }
 
@@ -1049,25 +1074,25 @@ export async function getUnifiedSchedule(userId: number): Promise<UnifiedSchedul
 
     const paidSet = new Set(allPayments.map((p) => `${p.billId}:${p.yearMonth}`));
 
-    // Show current month + next 3 months only (no past months)
+    // Show target month (if provided) or current + next 3 months
     const monthsToShow: Array<{ year: number; month: number }> = [];
-    // Current month
-    monthsToShow.push({ year: nowYear, month: nowMonth });
-    // Next 3 months
-    for (let offset = 1; offset <= 3; offset++) {
-      let m = nowMonth + offset;
-      let y = nowYear;
-      while (m > 12) { m -= 12; y++; }
-      monthsToShow.push({ year: y, month: m });
+    if (targetYearMonth) {
+      const [ty, tm] = targetYearMonth.split("-").map(Number);
+      monthsToShow.push({ year: ty, month: tm });
+    } else {
+      monthsToShow.push({ year: nowYear, month: nowMonth });
+      for (let offset = 1; offset <= 3; offset++) {
+        let m = nowMonth + offset;
+        let y = nowYear;
+        while (m > 12) { m -= 12; y++; }
+        monthsToShow.push({ year: y, month: m });
+      }
     }
 
     for (const bill of billRows) {
       for (const { year, month } of monthsToShow) {
         const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
         const isPaid = paidSet.has(`${bill.id}:${yearMonth}`);
-
-        // Skip if already paid (no need to show paid future months)
-        if (isPaid) continue;
 
         const dueDay = Math.min(bill.dueDay, new Date(year, month, 0).getDate());
         const dueDate = `${year}-${String(month).padStart(2, "0")}-${String(dueDay).padStart(2, "0")}`;
