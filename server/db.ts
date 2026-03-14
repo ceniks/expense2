@@ -5,12 +5,36 @@ import { ENV } from "./_core/env";
 import type { AIConfig, AIProvider } from "./ai-provider";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _migrationsRan = false;
+
+async function runStartupMigrations(db: ReturnType<typeof drizzle>) {
+  if (_migrationsRan) return;
+  _migrationsRan = true;
+  try {
+    // Verifica se bankAccountId já existe com tipo correto
+    const [rows] = await db.execute(sql`
+      SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'bankAccountId'
+    `) as any;
+    const col = Array.isArray(rows) ? rows[0] : null;
+    if (!col) {
+      await db.execute(sql`ALTER TABLE payments ADD COLUMN bankAccountId INT NULL`);
+      console.log("[Migration] Added bankAccountId column to payments");
+    } else if (col.DATA_TYPE !== "int") {
+      await db.execute(sql`ALTER TABLE payments MODIFY COLUMN bankAccountId INT NULL`);
+      console.log("[Migration] Fixed bankAccountId column type in payments");
+    }
+  } catch (e) {
+    console.warn("[Migration] bankAccountId migration failed:", e);
+  }
+}
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       _db = drizzle(process.env.DATABASE_URL);
+      runStartupMigrations(_db);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
