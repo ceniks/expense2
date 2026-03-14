@@ -1466,6 +1466,45 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
     approveAll: protectedProcedure
       .input(z.object({ importId: z.number(), minConfidence: z.number().optional() }))
       .mutation(({ ctx, input }) => db.approveAllStatementRows(input.importId, ctx.user.id, input.minConfidence ?? 0.8)),
+
+    applyAIInstruction: protectedProcedure
+      .input(z.object({ importId: z.number(), instruction: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        // Busca todas as linhas pendentes do import
+        const pending = await db.listPendingStatementRows(ctx.user.id, input.importId);
+        if (pending.length === 0) return { updated: 0 };
+
+        const userCategories = await db.getUserCategories(ctx.user.id);
+        const categoryNames = userCategories.map((c: any) => c.name).join(", ");
+
+        const prompt = `Você é um assistente financeiro brasileiro. O usuário quer aplicar a seguinte regra nas transações pendentes:
+
+"${input.instruction}"
+
+Categorias disponíveis: ${categoryNames || "Alimentação, Transporte, Saúde, Lazer, Fornecedores, Folha de Pagamento, Impostos, Outros"}
+
+Para cada transação abaixo, avalie se ela se encaixa na regra do usuário.
+- Se sim: retorne { "id": <id>, "category": "<categoria>", "profile": "Pessoal" ou "Empresa", "description": "<descrição curta em português>" }
+- Se não: retorne null
+
+Transações:
+${JSON.stringify(pending.map((r: any) => ({ id: r.id, description: r.description, amount: r.amount, type: r.type })))}
+
+Retorne SOMENTE um array JSON com o mesmo número de elementos (null para as que não se encaixam), sem texto extra.`;
+
+        try {
+          const messages: Message[] = [{ role: "user", content: prompt }];
+          const result = await invokeLLM({ messages, response_format: { type: "json_object" } });
+          const parsed = JSON.parse(result as unknown as string);
+          const arr: any[] = Array.isArray(parsed) ? parsed : parsed.rows ?? parsed.transactions ?? [];
+
+          const updates = arr.filter((r: any) => r && r.id && r.category);
+          await db.applyAISuggestionsToRows(updates);
+          return { updated: updates.length };
+        } catch (e: any) {
+          throw new Error("Erro ao aplicar instrução: " + e?.message);
+        }
+      }),
   }),
 
 });

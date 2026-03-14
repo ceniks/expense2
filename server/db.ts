@@ -2087,6 +2087,17 @@ export async function getStatementRules(userId: number): Promise<Map<string, { c
   return map;
 }
 
+/** Aplica sugestões da IA (categoria, perfil, descrição) em linhas pendentes sem aprová-las */
+export async function applyAISuggestionsToRows(updates: { id: number; category: string; profile: string; description: string }[]) {
+  const db = await getDb();
+  if (!db || updates.length === 0) return;
+  for (const u of updates) {
+    await db.update(statementRows)
+      .set({ suggestedCategory: u.category, suggestedProfile: u.profile as "Pessoal" | "Empresa", suggestedDescription: u.description, confidence: "0.95" })
+      .where(and(eq(statementRows.id, u.id), eq(statementRows.status, "pending")));
+  }
+}
+
 /** Ao aprovar uma linha, propaga a categoria para todas as outras linhas pendentes
  *  do mesmo import que tenham o mesmo padrão (nome). Retorna o count propagado. */
 export async function propagateCategoryToSiblings(

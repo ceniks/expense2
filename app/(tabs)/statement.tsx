@@ -100,6 +100,20 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
     }
   });
 
+  const applyAIMut = trpc.bankStatement.applyAIInstruction.useMutation({
+    onSuccess: (data) => {
+      utils.bankStatement.listRows.invalidate();
+      setAiInstruction("");
+      if (data.updated > 0) {
+        showAlert("IA aplicada", `${data.updated} transação(ões) foram recategorizadas. Revise e aprove.`);
+      } else {
+        showAlert("Nenhuma correspondência", "A IA não encontrou transações que se encaixem na instrução.");
+      }
+    },
+    onError: (e) => showAlert("Erro", e.message),
+  });
+
+  const [aiInstruction, setAiInstruction] = useState("");
   const [editingRow, setEditingRow] = useState<any | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editCat, setEditCat] = useState("");
@@ -303,6 +317,35 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
           )
           : (
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {/* Campo instrução IA */}
+              <View style={{ backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12, marginBottom: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 16 }}>✨</Text>
+                  <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>Instrução para IA</Text>
+                </View>
+                <TextInput
+                  value={aiInstruction}
+                  onChangeText={setAiInstruction}
+                  placeholder='Ex: transações com "cancelado" → Estorno'
+                  placeholderTextColor={colors.muted}
+                  multiline
+                  style={{ color: colors.foreground, fontSize: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, minHeight: 60, backgroundColor: colors.background }}
+                />
+                <Pressable
+                  onPress={() => {
+                    if (!aiInstruction.trim()) { showAlert("Digite uma instrução para a IA."); return; }
+                    applyAIMut.mutate({ importId, instruction: aiInstruction.trim() });
+                  }}
+                  disabled={applyAIMut.isPending}
+                  style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary, borderRadius: 8, padding: 10, marginTop: 8, opacity: pressed || applyAIMut.isPending ? 0.6 : 1 })}
+                >
+                  {applyAIMut.isPending
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Aplicar IA nas transações pendentes</Text>
+                  }
+                </Pressable>
+              </View>
+
               {/* Botão apagar todos pendentes */}
               <Pressable
                 onPress={() => showConfirm("Apagar pendentes", "Apagar todos os lançamentos pendentes desta triagem?", () => deleteAllMut.mutate({ importId }))}
