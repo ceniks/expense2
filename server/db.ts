@@ -594,6 +594,39 @@ export async function markInstallmentUnpaid(installmentId: number, userId: numbe
     .where(eq(invoiceInstallments.id, installmentId));
 }
 
+/** Mark installment as paid without creating a payment record */
+export async function markInstallmentPaidNoRecord(installmentId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(invoiceInstallments)
+    .set({ paidAt: new Date(), paymentId: null })
+    .where(and(eq(invoiceInstallments.id, installmentId)));
+}
+
+/** Mark monthly bill as paid without creating a payment record */
+export async function payMonthlyBillNoRecord(userId: number, data: { id: number; yearMonth: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [bill] = await db.select().from(monthlyBills).where(eq(monthlyBills.id, data.id));
+  if (!bill) throw new Error("Conta não encontrada");
+  await db.insert(monthlyBillPayments).values({
+    billId: data.id, userId, yearMonth: data.yearMonth,
+    amount: String(bill.amount), paymentId: null,
+  });
+  return { success: true };
+}
+
+/** Mark one financing installment as paid (increments paidInstallments) */
+export async function markFinancingInstallmentPaid(financingId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [f] = await db.select().from(financings).where(and(eq(financings.id, financingId), eq(financings.userId, userId)));
+  if (!f) throw new Error("Financiamento não encontrado");
+  await db.update(financings)
+    .set({ paidInstallments: f.paidInstallments + 1 })
+    .where(eq(financings.id, financingId));
+}
+
 /** Mark installment as already paid (no payment record created) */
 export async function markInstallmentAlreadyPaid(installmentId: number, userId: number) {
   const db = await getDb();

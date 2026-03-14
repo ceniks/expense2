@@ -203,12 +203,14 @@ function MarkPaidModal({
 function UnifiedCard({
   item,
   onPay,
+  onAlreadyPaid,
   onUnpay,
   onEdit,
   onDelete,
 }: {
   item: UnifiedItem;
   onPay: (item: UnifiedItem) => void;
+  onAlreadyPaid: (item: UnifiedItem) => void;
   onUnpay: (item: UnifiedItem) => void;
   onEdit: (item: UnifiedItem) => void;
   onDelete: (item: UnifiedItem) => void;
@@ -271,7 +273,6 @@ function UnifiedCard({
           </View>
           <View style={{ flex: 1 }} />
           {item.isPaid ? (
-            // Only invoices support "undo pay" via installmentId
             item.type === "invoice" ? (
               <Pressable
                 onPress={() => onUnpay(item)}
@@ -281,13 +282,21 @@ function UnifiedCard({
               </Pressable>
             ) : null
           ) : (
-            <Pressable
-              onPress={() => onPay(item)}
-              style={({ pressed }) => [styles.payBtn, { backgroundColor: typeColor }, pressed && { opacity: 0.7 }]}
-            >
-              <IconSymbol name="checkmark.circle.fill" size={14} color="#FFF" />
-              <Text style={styles.payBtnText}>Pagar</Text>
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable
+                onPress={() => onAlreadyPaid(item)}
+                style={({ pressed }) => [styles.unpayBtn, { borderColor: typeColor }, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={[styles.unpayBtnText, { color: typeColor }]}>Já Pago</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => onPay(item)}
+                style={({ pressed }) => [styles.payBtn, { backgroundColor: typeColor }, pressed && { opacity: 0.7 }]}
+              >
+                <IconSymbol name="checkmark.circle.fill" size={14} color="#FFF" />
+                <Text style={styles.payBtnText}>Pagar</Text>
+              </Pressable>
+            </View>
           )}
         </View>
       </View>
@@ -340,6 +349,17 @@ export default function ScheduleScreen() {
     },
   });
 
+  // "Já Pago" mutations (without creating payment records)
+  const markPaidNoRecordMutation = trpc.invoices.markPaidNoRecord.useMutation({
+    onSuccess: () => utils.invoices.unified.invalidate(),
+  });
+  const payBillNoRecordMutation = trpc.monthlyBills.payNoRecord.useMutation({
+    onSuccess: () => utils.invoices.unified.invalidate(),
+  });
+  const markFinancingPaidMutation = trpc.financings.markInstallmentPaid.useMutation({
+    onSuccess: () => utils.invoices.unified.invalidate(),
+  });
+
   // Delete mutations
   const deleteInvoiceMutation = trpc.invoices.delete.useMutation({
     onSuccess: () => utils.invoices.unified.invalidate(),
@@ -387,24 +407,52 @@ export default function ScheduleScreen() {
 
   const isFiltered = searchQuery.trim().length > 0 || selectedCategory !== null || selectedType !== null;
 
-  const pendingItems = useMemo(() =>
-    monthItems.filter(i => !i.isPaid).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [monthItems]);
+  const overdueItems = useMemo(() =>
+    monthItems.filter(i => !i.isPaid && i.dueDate < todayStr).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+    [monthItems, todayStr]);
+  const dueItems = useMemo(() =>
+    monthItems.filter(i => !i.isPaid && i.dueDate >= todayStr).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+    [monthItems, todayStr]);
   const paidItems = useMemo(() =>
     monthItems.filter(i => i.isPaid).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
     [monthItems]);
 
-  const totalPending = pendingItems.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalOverdue = overdueItems.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalDue = dueItems.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalPending = totalOverdue + totalDue;
   const totalPaid = paidItems.reduce((s, i) => s + parseFloat(i.amount), 0);
   const totalMonth = totalPending + totalPaid;
-
-  const overdueItems = pendingItems.filter(i => i.dueDate < todayStr);
-  const totalOverdue = overdueItems.reduce((s, i) => s + parseFloat(i.amount), 0);
 
   const handlePay = useCallback((item: UnifiedItem) => {
     setSelectedItem(item);
     setModalVisible(true);
   }, []);
+
+  const handleAlreadyPaid = useCallback((item: UnifiedItem) => {
+    Alert.alert(
+      "Marcar como Já Pago",
+      `Marcar "${item.name}" como pago sem lançar no extrato?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Confirmar",
+          onPress: async () => {
+            try {
+              if (item.type === "invoice" && item.installmentId) {
+                await markPaidNoRecordMutation.mutateAsync({ installmentId: item.installmentId });
+              } else if (item.type === "bill" && item.billId && item.yearMonth) {
+                await payBillNoRecordMutation.mutateAsync({ id: item.billId, yearMonth: item.yearMonth });
+              } else if (item.type === "financing" && item.financingId) {
+                await markFinancingPaidMutation.mutateAsync({ id: item.financingId });
+              }
+            } catch {
+              Alert.alert("Erro", "Não foi possível marcar como pago.");
+            }
+          },
+        },
+      ]
+    );
+  }, [markPaidNoRecordMutation, payBillNoRecordMutation, markFinancingPaidMutation]);
 
   const handleUnpay = useCallback(async (item: UnifiedItem) => {
     if (item.type !== "invoice" || !item.installmentId) return;
@@ -494,9 +542,14 @@ export default function ScheduleScreen() {
   const listData: ListItem[] = useMemo(() => {
     const data: ListItem[] = [{ type: "summary" }];
 
-    if (pendingItems.length > 0) {
-      data.push({ type: "section", title: `A Pagar · ${pendingItems.length}`, total: totalPending, color: "#EF4444" });
-      for (const item of pendingItems) data.push({ type: "item", data: item });
+    if (overdueItems.length > 0) {
+      data.push({ type: "section", title: `Vencidos · ${overdueItems.length}`, total: totalOverdue, color: "#EF4444" });
+      for (const item of overdueItems) data.push({ type: "item", data: item });
+    }
+
+    if (dueItems.length > 0) {
+      data.push({ type: "section", title: `A Pagar · ${dueItems.length}`, total: totalDue, color: "#F59E0B" });
+      for (const item of dueItems) data.push({ type: "item", data: item });
     }
 
     if (paidItems.length > 0) {
@@ -504,7 +557,7 @@ export default function ScheduleScreen() {
       for (const item of paidItems) data.push({ type: "item", data: item });
     }
 
-    if (pendingItems.length === 0 && paidItems.length === 0 && !isLoading) {
+    if (overdueItems.length === 0 && dueItems.length === 0 && paidItems.length === 0 && !isLoading) {
       data.push({
         type: "empty",
         message: isFiltered
@@ -514,7 +567,7 @@ export default function ScheduleScreen() {
     }
 
     return data;
-  }, [pendingItems, paidItems, totalPending, totalPaid, isFiltered, isLoading, selectedYearMonth]);
+  }, [overdueItems, dueItems, paidItems, totalOverdue, totalDue, totalPaid, isFiltered, isLoading, selectedYearMonth]);
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === "summary") {
@@ -558,7 +611,7 @@ export default function ScheduleScreen() {
     }
 
     if (item.type === "item") {
-      return <UnifiedCard item={item.data} onPay={handlePay} onUnpay={handleUnpay} onEdit={handleEdit} onDelete={handleDelete} />;
+      return <UnifiedCard item={item.data} onPay={handlePay} onAlreadyPaid={handleAlreadyPaid} onUnpay={handleUnpay} onEdit={handleEdit} onDelete={handleDelete} />;
     }
 
     if (item.type === "empty") {

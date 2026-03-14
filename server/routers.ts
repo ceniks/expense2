@@ -509,6 +509,13 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         db.markInstallmentUnpaid(input.installmentId, ctx.user.id)
       ),
 
+    /** Mark installment as paid without creating a payment record */
+    markPaidNoRecord: protectedProcedure
+      .input(z.object({ installmentId: z.number() }))
+      .mutation(({ ctx, input }) =>
+        db.markInstallmentPaidNoRecord(input.installmentId, ctx.user.id)
+      ),
+
     /** Mark installment as already paid — no payment record, excluded from reports */
     markAsAlreadyPaid: protectedProcedure
       .input(z.object({ installmentId: z.number() }))
@@ -610,6 +617,9 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
     registerPayment: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ ctx, input }) => db.registerFinancingPayment(ctx.user.id, input.id)),
+    markInstallmentPaid: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ ctx, input }) => db.markFinancingInstallmentPaid(input.id, ctx.user.id)),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ ctx, input }) => db.deleteFinancing(ctx.user.id, input.id)),
@@ -882,6 +892,12 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
         yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
       }))
       .mutation(({ ctx, input }) => db.payMonthlyBill(ctx.user.id, input)),
+    payNoRecord: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+      }))
+      .mutation(({ ctx, input }) => db.payMonthlyBillNoRecord(ctx.user.id, input)),
     unpay: protectedProcedure
       .input(z.object({ id: z.number(), yearMonth: z.string().regex(/^\d{4}-\d{2}$/) }))
       .mutation(({ ctx, input }) => db.unpayMonthlyBill(ctx.user.id, input.id, input.yearMonth)),
