@@ -2073,10 +2073,11 @@ export async function getAISettings(userId: number): Promise<AIConfig> {
     : await db?.select().from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1);
 
   const row = rows?.[0];
-  // Fallback para Manus (configuração original do sistema)
+  const { ENV } = await import("./_core/env");
+  // Fallback para Manus usando URL e chave do ambiente (configuração original do sistema)
   if (!row || !row.apiKey) {
-    const { ENV } = await import("./_core/env");
-    return { provider: "manus", apiKey: ENV.forgeApiKey ?? "", model: "gemini-2.5-flash" };
+    const manusUrl = ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : undefined;
+    return { provider: "manus", apiKey: ENV.forgeApiKey ?? "", model: "gemini-2.5-flash", apiUrl: manusUrl };
   }
   return { provider: row.provider as AIProvider, apiKey: row.apiKey, model: row.model ?? undefined };
 }

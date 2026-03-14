@@ -9,6 +9,7 @@ export interface AIConfig {
   provider: AIProvider;
   apiKey: string;
   model?: string;
+  apiUrl?: string; // URL customizada (usado pelo Manus com ENV.forgeApiUrl)
 }
 
 export interface AIMessage {
@@ -37,7 +38,9 @@ export async function callAI(config: AIConfig, messages: AIMessage[]): Promise<s
   if (config.provider === "claude") {
     return callClaude(config.apiKey, model, messages);
   }
-  return callOpenAICompat(config.provider, config.apiKey, model, messages);
+  // Usa URL customizada se fornecida (ex: forgeApiUrl do Manus)
+  const url = config.apiUrl ?? PROVIDER_URLS[config.provider];
+  return callOpenAICompat(config.provider, config.apiKey, model, messages, url);
 }
 
 /** Claude usa formato próprio (Anthropic Messages API) */
@@ -75,8 +78,8 @@ async function callClaude(apiKey: string, model: string, messages: AIMessage[]):
 }
 
 /** Manus, Gemini, GPT — todos usam formato OpenAI */
-async function callOpenAICompat(provider: AIProvider, apiKey: string, model: string, messages: AIMessage[]): Promise<string> {
-  const response = await fetch(PROVIDER_URLS[provider], {
+async function callOpenAICompat(provider: AIProvider, apiKey: string, model: string, messages: AIMessage[], url?: string): Promise<string> {
+  const response = await fetch(url ?? PROVIDER_URLS[provider], {
     method: "POST",
     headers: {
       "content-type": "application/json",
