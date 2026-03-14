@@ -4,8 +4,15 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM, type Message } from "./_core/llm";
+import { callAI, testAIConnection, type AIProvider } from "./ai-provider";
 import { storagePut } from "./storage";
 import * as db from "./db";
+
+/** Wrapper que usa a IA configurada pelo usuário. Retorna o conteúdo como string. */
+async function ai(userId: number, messages: { role: "system" | "user" | "assistant"; content: string }[]): Promise<string> {
+  const config = await db.getAISettings(userId);
+  return callAI(config, messages);
+}
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -423,9 +430,7 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
           },
         ];
 
-        const response = await invokeLLM({ messages, response_format: { type: "json_object" } });
-        const rawContent = response.choices[0]?.message?.content ?? "{}";
-        const content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+        const content = await ai(ctx.user.id, messages.map((m: any) => ({ role: m.role as "system"|"user"|"assistant", content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })));
         let data: Record<string, unknown> = {};
         try { data = JSON.parse(content); } catch { /* ignore */ }
 
@@ -1229,12 +1234,8 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
             if (rows.length === 0) {
               const sampleText = allLines.slice(0, 25).join("\n");
               try {
-                const aiMessages: Message[] = [{ role: "user", content: [{ type: "text", text: `Analise este extrato bancário CSV e retorne um JSON com o perfil de formato:
-{ "separator": ";" ou ",", "headerLineIdx": número da linha do cabeçalho (0-based), "dateColName": "NOME_COLUNA_DATA", "descColName": "NOME_COLUNA_DESCRICAO", "amtColName": "NOME_COLUNA_VALOR", "typeColName": "NOME_COLUNA_TIPO_ou_null" }
-Os nomes de coluna devem ser EXATAMENTE como aparecem no cabeçalho (em maiúsculas).
-CSV:\n${sampleText}\nRetorne SOMENTE o JSON, sem texto extra.` }] }];
-                const aiResult = await invokeLLM({ messages: aiMessages, response_format: { type: "json_object" } });
-                const aiProfile = JSON.parse(aiResult as unknown as string);
+                const aiResult = await ai(ctx.user.id, [{ role: "user", content: `Analise este extrato bancário CSV e retorne um JSON com o perfil de formato:\n{ "separator": ";" ou ",", "headerLineIdx": número da linha do cabeçalho (0-based), "dateColName": "NOME_COLUNA_DATA", "descColName": "NOME_COLUNA_DESCRICAO", "amtColName": "NOME_COLUNA_VALOR", "typeColName": "NOME_COLUNA_TIPO_ou_null" }\nOs nomes de coluna devem ser EXATAMENTE como aparecem no cabeçalho (em maiúsculas).\nCSV:\n${sampleText}\nRetorne SOMENTE o JSON, sem texto extra.` }]);
+                const aiProfile = JSON.parse(aiResult);
                 rows = parseWithProfile(aiProfile);
                 if (rows.length > 0) {
                   await db.saveBankAccountCsvFormat(input.accountId, aiProfile);
@@ -1357,8 +1358,7 @@ ${JSON.stringify(batch)}
 Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
 
           try {
-            const messages: Message[] = [{ role: "user", content: prompt }];
-            const result = await invokeLLM({ messages, response_format: { type: "json_object" } });
+            const result = await ai(ctx.user.id, [{ role: "user", content: prompt }]);
             const parsed = JSON.parse(result);
             const arr = Array.isArray(parsed) ? parsed : parsed.rows ?? parsed.transactions ?? [];
             for (let j = 0; j < batch.length; j++) {
@@ -1493,9 +1493,8 @@ ${JSON.stringify(pending.map((r: any) => ({ id: r.id, description: r.description
 Retorne SOMENTE um array JSON com o mesmo número de elementos (null para as que não se encaixam), sem texto extra.`;
 
         try {
-          const messages: Message[] = [{ role: "user", content: prompt }];
-          const result = await invokeLLM({ messages, response_format: { type: "json_object" } });
-          const parsed = JSON.parse(result as unknown as string);
+          const result = await ai(ctx.user.id, [{ role: "user", content: prompt }]);
+          const parsed = JSON.parse(result);
           const arr: any[] = Array.isArray(parsed) ? parsed : parsed.rows ?? parsed.transactions ?? [];
 
           const updates = arr.filter((r: any) => r && r.id && r.category);
@@ -1504,6 +1503,34 @@ Retorne SOMENTE um array JSON com o mesmo número de elementos (null para as que
         } catch (e: any) {
           throw new Error("Erro ao aplicar instrução: " + e?.message);
         }
+      }),
+  }),
+
+  // ─── Configuração de IA ──────────────────────────────────────────────────────
+  aiSettings: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      const config = await db.getAISettings(ctx.user.id);
+      return { provider: config.provider, model: config.model ?? null, hasKey: !!config.apiKey };
+    }),
+
+    save: protectedProcedure
+      .input(z.object({
+        provider: z.enum(["manus", "claude", "gemini", "gpt"]),
+        apiKey: z.string(),
+        model: z.string().optional(),
+      }))
+      .mutation(({ ctx, input }) =>
+        db.saveAISettings(ctx.user.id, { provider: input.provider as AIProvider, apiKey: input.apiKey, model: input.model })
+      ),
+
+    test: protectedProcedure
+      .input(z.object({
+        provider: z.enum(["manus", "claude", "gemini", "gpt"]),
+        apiKey: z.string(),
+        model: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return testAIConnection({ provider: input.provider as AIProvider, apiKey: input.apiKey, model: input.model });
       }),
   }),
 

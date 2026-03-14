@@ -789,6 +789,131 @@ function BankAccountsSection() {
   );
 }
 
+// ─── Configuração de IA ───────────────────────────────────────────────────────
+
+const AI_PROVIDERS = [
+  { key: "manus",  label: "Manus",  color: "#7C3AED", desc: "Padrão do sistema" },
+  { key: "claude", label: "Claude", color: "#D97706", desc: "Anthropic — mais preciso" },
+  { key: "gemini", label: "Gemini", color: "#2563EB", desc: "Google DeepMind" },
+  { key: "gpt",    label: "GPT",    color: "#16A34A", desc: "OpenAI" },
+] as const;
+
+const DEFAULT_MODELS: Record<string, string> = {
+  manus: "gemini-2.5-flash", claude: "claude-sonnet-4-6", gemini: "gemini-2.0-flash", gpt: "gpt-4o-mini",
+};
+
+function AISettingsSection() {
+  const colors = useColors();
+  const utils = trpc.useUtils();
+  const { data: current } = trpc.aiSettings.get.useQuery();
+  const saveMut = trpc.aiSettings.save.useMutation({ onSuccess: () => { utils.aiSettings.get.invalidate(); Alert.alert("Salvo!", "Configuração de IA atualizada."); } });
+  const testMut = trpc.aiSettings.test.useMutation();
+
+  const [provider, setProvider] = useState<string>("manus");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // Preenche com dados atuais quando carrega
+  useState(() => { if (current) { setProvider(current.provider); setModel(current.model ?? DEFAULT_MODELS[current.provider] ?? ""); } });
+
+  async function handleTest() {
+    setTestResult(null);
+    const result = await testMut.mutateAsync({ provider: provider as any, apiKey, model: model || undefined });
+    setTestResult(result);
+  }
+
+  async function handleSave() {
+    if (!apiKey.trim()) { Alert.alert("Informe a chave de API."); return; }
+    await saveMut.mutateAsync({ provider: provider as any, apiKey: apiKey.trim(), model: model.trim() || undefined });
+  }
+
+  return (
+    <View style={{ padding: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <Text style={{ fontSize: 18 }}>✨</Text>
+        <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 16 }}>Configuração de IA</Text>
+      </View>
+      {current && (
+        <View style={{ backgroundColor: colors.accent, borderRadius: 8, padding: 10, marginBottom: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={{ color: colors.primary, fontSize: 13 }}>
+            Ativo: <Text style={{ fontWeight: "700" }}>{AI_PROVIDERS.find(p => p.key === current.provider)?.label ?? current.provider}</Text>
+            {current.hasKey ? " ✓" : " (sem chave — usando padrão)"}
+          </Text>
+        </View>
+      )}
+
+      {/* Seletor de provedor */}
+      <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", marginBottom: 8 }}>PROVEDOR</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+        {AI_PROVIDERS.map((p) => (
+          <Pressable
+            key={p.key}
+            onPress={() => { setProvider(p.key); setModel(DEFAULT_MODELS[p.key] ?? ""); }}
+            style={({ pressed }) => ({
+              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 2,
+              borderColor: provider === p.key ? p.color : colors.border,
+              backgroundColor: provider === p.key ? p.color + "18" : colors.surface,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text style={{ color: provider === p.key ? p.color : colors.muted, fontWeight: "700", fontSize: 13 }}>{p.label}</Text>
+            <Text style={{ color: colors.muted, fontSize: 10 }}>{p.desc}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Chave de API */}
+      <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", marginBottom: 6 }}>CHAVE DE API</Text>
+      <TextInput
+        value={apiKey}
+        onChangeText={setApiKey}
+        placeholder={current?.hasKey ? "••••••••••••••• (salva)" : "Cole sua chave aqui"}
+        placeholderTextColor={colors.muted}
+        secureTextEntry
+        style={{ color: colors.foreground, fontSize: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, backgroundColor: colors.background, marginBottom: 12 }}
+      />
+
+      {/* Modelo */}
+      <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", marginBottom: 6 }}>MODELO (opcional)</Text>
+      <TextInput
+        value={model}
+        onChangeText={setModel}
+        placeholder={DEFAULT_MODELS[provider] ?? "ex: gpt-4o"}
+        placeholderTextColor={colors.muted}
+        style={{ color: colors.foreground, fontSize: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, backgroundColor: colors.background, marginBottom: 16 }}
+      />
+
+      {/* Resultado do teste */}
+      {testResult && (
+        <View style={{ backgroundColor: testResult.ok ? colors.success + "15" : colors.error + "15", borderRadius: 8, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: testResult.ok ? colors.success + "40" : colors.error + "40" }}>
+          <Text style={{ color: testResult.ok ? colors.success : colors.error, fontSize: 13 }}>
+            {testResult.ok ? "✓ " : "✗ "}{testResult.message}
+          </Text>
+        </View>
+      )}
+
+      {/* Botões */}
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Pressable
+          onPress={handleTest}
+          disabled={!apiKey.trim() || testMut.isPending}
+          style={({ pressed }) => ({ flex: 1, alignItems: "center", justifyContent: "center", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, opacity: pressed || testMut.isPending || !apiKey.trim() ? 0.5 : 1 })}
+        >
+          {testMut.isPending ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>Testar</Text>}
+        </Pressable>
+        <Pressable
+          onPress={handleSave}
+          disabled={!apiKey.trim() || saveMut.isPending}
+          style={({ pressed }) => ({ flex: 2, alignItems: "center", justifyContent: "center", padding: 12, borderRadius: 10, backgroundColor: colors.primary, opacity: pressed || saveMut.isPending || !apiKey.trim() ? 0.5 : 1 })}
+        >
+          {saveMut.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Salvar configuração</Text>}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -933,6 +1058,11 @@ export default function SettingsScreen() {
 
         {/* Contas Bancárias */}
         <BankAccountsSection />
+
+        <View style={[styles.divider, { backgroundColor: colors.border, marginTop: 16 }]} />
+
+        {/* Configuração de IA */}
+        <AISettingsSection />
 
       </ScrollView>
 

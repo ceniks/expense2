@@ -374,3 +374,15 @@ export const statementRules = mysqlTable("statement_rules", {
   usageCount: int("usageCount").notNull().default(1),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
+// ─── Configuração de IA ───────────────────────────────────────────────────────
+
+export const aiSettings = mysqlTable("ai_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  groupId: int("groupId"),
+  provider: mysqlEnum("provider", ["manus", "claude", "gemini", "gpt"]).notNull().default("manus"),
+  apiKey: varchar("apiKey", { length: 500 }),
+  model: varchar("model", { length: 100 }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});

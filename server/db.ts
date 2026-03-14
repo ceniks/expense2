@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, or, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, payments, categories, InsertPayment, InsertCategory, sharedGroups, groupMembers, InsertSharedGroup, InsertGroupMember, invoices, invoiceInstallments, financings, monthlyBills, monthlyBillPayments, employees, employeePayments, pendingPayrolls, bankAccounts, bankStatementImports, statementRows, statementRules } from "../drizzle/schema";
+import { InsertUser, users, payments, categories, InsertPayment, InsertCategory, sharedGroups, groupMembers, InsertSharedGroup, InsertGroupMember, invoices, invoiceInstallments, financings, monthlyBills, monthlyBillPayments, employees, employeePayments, pendingPayrolls, bankAccounts, bankStatementImports, statementRows, statementRules, aiSettings } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import type { AIConfig, AIProvider } from "./ai-provider";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2001,6 +2002,40 @@ export async function approveAllStatementRows(importId: number, userId: number, 
   }
   await db.update(bankStatementImports).set({ imported: count }).where(eq(bankStatementImports.id, importId));
   return count;
+}
+
+// ─── Configuração de IA ───────────────────────────────────────────────────────
+
+export async function getAISettings(userId: number): Promise<AIConfig> {
+  const db = await getDb();
+  const groupId = await getUserGroupId(userId);
+  const rows = groupId
+    ? await db?.select().from(aiSettings).where(eq(aiSettings.groupId, groupId)).limit(1)
+    : await db?.select().from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1);
+
+  const row = rows?.[0];
+  // Fallback para Manus (configuração original do sistema)
+  if (!row || !row.apiKey) {
+    const { ENV } = await import("./_core/env");
+    return { provider: "manus", apiKey: ENV.forgeApiKey ?? "", model: "gemini-2.5-flash" };
+  }
+  return { provider: row.provider as AIProvider, apiKey: row.apiKey, model: row.model ?? undefined };
+}
+
+export async function saveAISettings(userId: number, data: { provider: AIProvider; apiKey: string; model?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const groupId = await getUserGroupId(userId);
+
+  const existing = groupId
+    ? await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.groupId, groupId)).limit(1)
+    : await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1);
+
+  if (existing.length > 0) {
+    await db.update(aiSettings).set({ ...data, model: data.model ?? null }).where(eq(aiSettings.id, existing[0].id));
+  } else {
+    await db.insert(aiSettings).values({ userId, groupId, ...data, model: data.model ?? null });
+  }
 }
 
 // ─── Enviar Holerites por Email ────────────────────────────────────────────────
