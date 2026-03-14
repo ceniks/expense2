@@ -1732,14 +1732,35 @@ export async function listStatementImports(userId: number) {
   const db = await getDb();
   if (!db) return [];
   const groupId = await getUserGroupId(userId);
-  if (groupId) {
-    return db.select().from(bankStatementImports)
-      .where(eq(bankStatementImports.groupId, groupId))
-      .orderBy(desc(bankStatementImports.importedAt));
-  }
-  return db.select().from(bankStatementImports)
-    .where(eq(bankStatementImports.userId, userId))
-    .orderBy(desc(bankStatementImports.importedAt));
+
+  const imports = groupId
+    ? await db.select().from(bankStatementImports)
+        .where(eq(bankStatementImports.groupId, groupId))
+        .orderBy(desc(bankStatementImports.importedAt))
+    : await db.select().from(bankStatementImports)
+        .where(eq(bankStatementImports.userId, userId))
+        .orderBy(desc(bankStatementImports.importedAt));
+
+  if (imports.length === 0) return [];
+
+  const importIds = imports.map((i) => i.id);
+  const dateRanges = await db
+    .select({
+      importId: statementRows.importId,
+      minDate: sql<string>`MIN(${statementRows.date})`,
+      maxDate: sql<string>`MAX(${statementRows.date})`,
+    })
+    .from(statementRows)
+    .where(inArray(statementRows.importId, importIds))
+    .groupBy(statementRows.importId);
+
+  const dateMap = new Map(dateRanges.map((r) => [r.importId, { minDate: r.minDate, maxDate: r.maxDate }]));
+
+  return imports.map((imp) => ({
+    ...imp,
+    minDate: dateMap.get(imp.id)?.minDate ?? null,
+    maxDate: dateMap.get(imp.id)?.maxDate ?? null,
+  }));
 }
 
 export async function insertStatementRows(userId: number, importId: number, accountId: number, rows: {

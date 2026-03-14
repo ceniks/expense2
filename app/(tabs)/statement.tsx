@@ -765,6 +765,14 @@ export default function StatementScreen() {
                   <Text style={[s.importMeta, { color: colors.muted }]}>
                     {new Date(imp.importedAt).toLocaleDateString("pt-BR")} · {imp.totalRows} transações · {imp.imported} aprovadas
                   </Text>
+                  {imp.minDate && imp.maxDate && (
+                    <Text style={[s.importMeta, { color: colors.primary, marginTop: 2 }]}>
+                      {imp.minDate === imp.maxDate
+                        ? `📅 ${imp.minDate.slice(8, 10)}/${imp.minDate.slice(5, 7)}/${imp.minDate.slice(0, 4)}`
+                        : `📅 ${imp.minDate.slice(8, 10)}/${imp.minDate.slice(5, 7)}/${imp.minDate.slice(0, 4)} a ${imp.maxDate.slice(8, 10)}/${imp.maxDate.slice(5, 7)}/${imp.maxDate.slice(0, 4)}`
+                      }
+                    </Text>
+                  )}
                 </View>
                 <IconSymbol name="chevron.right" size={16} color={colors.muted} />
               </Pressable>
