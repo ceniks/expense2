@@ -92,16 +92,35 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
     }
   });
 
+  const bulkRevertMut = trpc.bankStatement.bulkRevert.useMutation({
+    onSuccess: () => {
+      utils.bankStatement.listRows.invalidate();
+      utils.bankStatement.listImports.invalidate();
+      setSelectedRevertIds(new Set());
+    }
+  });
+
   const [editingRow, setEditingRow] = useState<any | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editCat, setEditCat] = useState("");
   const [editProfile, setEditProfile] = useState<"Pessoal" | "Empresa">("Pessoal");
   const [approvingAll, setApprovingAll] = useState(false);
 
-  // Seleção múltipla
+  // Seleção múltipla (pendentes)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCat, setBulkCat] = useState("");
   const [bulkProfile, setBulkProfile] = useState<"Pessoal" | "Empresa">("Pessoal");
+
+  // Seleção múltipla (aprovados para estorno)
+  const [selectedRevertIds, setSelectedRevertIds] = useState<Set<number>>(new Set());
+
+  function toggleRevertSelect(id: number) {
+    setSelectedRevertIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   function toggleSelect(id: number) {
     setSelectedIds((prev) => {
@@ -239,9 +258,17 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                     </Text>
                     <IconSymbol name={showApproved ? "chevron.up" : "chevron.down"} size={14} color={colors.muted} />
                   </Pressable>
-                  {showApproved && approved.map((row: any) => (
-                    <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.75, width: "100%" }]}>
+                  {showApproved && approved.map((row: any) => {
+                    const isRevertSelected = selectedRevertIds.has(row.id);
+                    return (
+                    <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: isRevertSelected ? colors.error : colors.border, borderWidth: isRevertSelected ? 2 : 1, opacity: 0.9, width: "100%" }]}>
                       <View style={s.rowTop}>
+                        <Pressable
+                          onPress={() => toggleRevertSelect(row.id)}
+                          style={{ marginRight: 10, marginTop: 2, width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isRevertSelected ? colors.error : colors.border, backgroundColor: isRevertSelected ? colors.error : "transparent", alignItems: "center", justifyContent: "center" }}
+                        >
+                          {isRevertSelected && <Text style={{ color: "#fff", fontSize: 13, fontWeight: "900", lineHeight: 15 }}>✓</Text>}
+                        </Pressable>
                         <View style={{ flex: 1 }}>
                           <Text style={[s.rowDate, { color: colors.muted }]}>{row.date}</Text>
                           <Text style={[s.rowDesc, { color: colors.foreground }]} numberOfLines={2}>
@@ -268,7 +295,8 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                         <Text style={[s.actionBtnText, { color: colors.error }]}>Estornar</Text>
                       </Pressable>
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </ScrollView>
@@ -382,9 +410,17 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                     </Text>
                     <IconSymbol name={showApproved ? "chevron.up" : "chevron.down"} size={14} color={colors.muted} />
                   </Pressable>
-                  {showApproved && approved.map((row: any) => (
-                    <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.75 }]}>
+                  {showApproved && approved.map((row: any) => {
+                    const isRevertSelected = selectedRevertIds.has(row.id);
+                    return (
+                    <View key={row.id} style={[s.rowCard, { backgroundColor: colors.surface, borderColor: isRevertSelected ? colors.error : colors.border, borderWidth: isRevertSelected ? 2 : 1, opacity: 0.9 }]}>
                       <View style={s.rowTop}>
+                        <Pressable
+                          onPress={() => toggleRevertSelect(row.id)}
+                          style={{ marginRight: 10, marginTop: 2, width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isRevertSelected ? colors.error : colors.border, backgroundColor: isRevertSelected ? colors.error : "transparent", alignItems: "center", justifyContent: "center" }}
+                        >
+                          {isRevertSelected && <Text style={{ color: "#fff", fontSize: 13, fontWeight: "900", lineHeight: 15 }}>✓</Text>}
+                        </Pressable>
                         <View style={{ flex: 1 }}>
                           <Text style={[s.rowDate, { color: colors.muted }]}>{row.date}</Text>
                           <Text style={[s.rowDesc, { color: colors.foreground }]} numberOfLines={2}>
@@ -411,7 +447,8 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
                         <Text style={[s.actionBtnText, { color: colors.error }]}>Estornar</Text>
                       </Pressable>
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </ScrollView>
@@ -464,6 +501,36 @@ function TriageScreen({ importId, onBack }: { importId: number; onBack: () => vo
               ? <ActivityIndicator color="#fff" />
               : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
                   Aprovar {selectedIds.size} lançamento{selectedIds.size !== 1 ? "s" : ""}
+                </Text>
+            }
+          </Pressable>
+        </View>
+      )}
+
+      {/* Barra de estorno em massa */}
+      {selectedRevertIds.size > 0 && (
+        <View style={[s.bulkBar, { backgroundColor: colors.surface, borderTopColor: colors.error }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>
+              {selectedRevertIds.size} selecionado{selectedRevertIds.size !== 1 ? "s" : ""} para estorno
+            </Text>
+            <Pressable onPress={() => setSelectedRevertIds(new Set())}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>Limpar</Text>
+            </Pressable>
+          </View>
+          <Pressable
+            onPress={() => showConfirm(
+              "Estornar em massa",
+              `Estornar ${selectedRevertIds.size} lançamento${selectedRevertIds.size !== 1 ? "s" : ""}? Os pagamentos serão deletados e os lançamentos voltarão para pendente.`,
+              () => bulkRevertMut.mutate({ rowIds: Array.from(selectedRevertIds) })
+            )}
+            disabled={bulkRevertMut.isPending}
+            style={[s.editSaveBtn, { backgroundColor: colors.error, opacity: bulkRevertMut.isPending ? 0.6 : 1 }]}
+          >
+            {bulkRevertMut.isPending
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
+                  Estornar {selectedRevertIds.size} lançamento{selectedRevertIds.size !== 1 ? "s" : ""}
                 </Text>
             }
           </Pressable>

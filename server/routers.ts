@@ -1395,6 +1395,10 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
       .input(z.object({ rowId: z.number() }))
       .mutation(({ ctx, input }) => db.revertStatementRow(input.rowId, ctx.user.id)),
 
+    bulkRevert: protectedProcedure
+      .input(z.object({ rowIds: z.array(z.number()) }))
+      .mutation(({ ctx, input }) => db.bulkRevertStatementRows(input.rowIds, ctx.user.id)),
+
     deleteAllPending: protectedProcedure
       .input(z.object({ importId: z.number() }))
       .mutation(({ ctx, input }) => db.deleteAllPendingRows(input.importId, ctx.user.id)),

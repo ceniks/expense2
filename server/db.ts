@@ -1737,6 +1737,22 @@ export async function listPendingStatementRows(userId: number, importId: number)
     .orderBy(asc(statementRows.date));
 }
 
+export async function bulkRevertStatementRows(rowIds: number[], userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  for (const rowId of rowIds) {
+    const rows = await db.select().from(statementRows)
+      .where(and(eq(statementRows.id, rowId), eq(statementRows.userId, userId)))
+      .limit(1);
+    if (rows.length === 0) continue;
+    const row = rows[0];
+    if (row.paymentId) {
+      await db.delete(payments).where(and(eq(payments.id, row.paymentId), eq(payments.userId, userId)));
+    }
+    await db.update(statementRows).set({ status: "pending", paymentId: null }).where(eq(statementRows.id, rowId));
+  }
+}
+
 export async function revertStatementRow(rowId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
