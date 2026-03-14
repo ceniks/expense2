@@ -599,9 +599,20 @@ export default function StatementScreen() {
   const utils = trpc.useUtils();
   const { data: accounts = [] } = trpc.bankAccounts.list.useQuery();
   const { data: imports = [] } = trpc.bankStatement.listImports.useQuery();
+  const { data: accountMaxDates = [], refetch: refetchMaxDates } = trpc.bankStatement.accountMaxDates.useQuery();
   const uploadMut = trpc.bankStatement.upload.useMutation({
-    onSuccess: () => utils.bankStatement.listImports.invalidate(),
+    onSuccess: () => {
+      utils.bankStatement.listImports.invalidate();
+      refetchMaxDates();
+    },
   });
+
+  function getMaxDateForAccount(accountId: number): string | null {
+    const entry = (accountMaxDates as any[]).find((r: any) => r.accountId === accountId);
+    if (!entry?.maxDate) return null;
+    const [y, m, d] = entry.maxDate.split("-");
+    return `${d}/${m}/${y}`;
+  }
 
   const [selectedAccount, setSelectedAccount] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -646,14 +657,17 @@ export default function StatementScreen() {
         fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       }
 
-      const { importId, total, autoLearned } = await uploadMut.mutateAsync({
+      const { importId, total, autoLearned, overlappingDates, existingMaxDate } = await uploadMut.mutateAsync({
         accountId: selectedAccount,
         fileBase64,
         fileName,
         fileType,
       });
       const learnedMsg = autoLearned > 0 ? `\n${autoLearned} já categorizadas automaticamente pelo histórico.` : "";
-      showConfirm("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.${learnedMsg}\n\nAbrir triagem agora?`,
+      const overlapMsg = overlappingDates && existingMaxDate
+        ? `\n\n⚠️ Atenção: esta conta já tinha dados até ${existingMaxDate.slice(8, 10)}/${existingMaxDate.slice(5, 7)}/${existingMaxDate.slice(0, 4)}. Verifique se há lançamentos duplicados na triagem.`
+        : "";
+      showConfirm("Importado!", `${total} transação(ões) encontrada(s). Revise na triagem.${learnedMsg}${overlapMsg}\n\nAbrir triagem agora?`,
         () => setTriageImportId(importId));
     } catch (e: any) {
       showAlert("Erro", e?.message ?? "Falha ao importar extrato.");
@@ -706,6 +720,11 @@ export default function StatementScreen() {
                     <Text style={[s.accountChipBank, { color: selectedAccount === acc.id ? "rgba(255,255,255,0.7)" : colors.muted }]}>
                       {acc.bank} · {acc.profile}
                     </Text>
+                    {getMaxDateForAccount(acc.id) && (
+                      <Text style={{ fontSize: 10, color: selectedAccount === acc.id ? "rgba(255,255,255,0.85)" : "#22C55E", marginTop: 1 }}>
+                        ✓ até {getMaxDateForAccount(acc.id)}
+                      </Text>
+                    )}
                   </View>
                 </Pressable>
               ))}

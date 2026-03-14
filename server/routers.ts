@@ -1112,6 +1112,8 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
   bankStatement: router({
     listImports: protectedProcedure.query(({ ctx }) => db.listStatementImports(ctx.user.id)),
 
+    accountMaxDates: protectedProcedure.query(({ ctx }) => db.getAccountMaxDates(ctx.user.id)),
+
     listRows: protectedProcedure
       .input(z.object({ importId: z.number() }))
       .query(({ ctx, input }) => db.listPendingStatementRows(ctx.user.id, input.importId)),
@@ -1346,6 +1348,13 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
           }
         }
 
+        // Checar sobreposição de datas com imports anteriores desta conta
+        const accountMaxDatesList = await db.getAccountMaxDates(ctx.user.id);
+        const existingMaxDate = accountMaxDatesList.find((r) => r.accountId === input.accountId)?.maxDate ?? null;
+        const newDates = enrichedRows.map((r) => r.date).sort();
+        const newMinDate = newDates[0] ?? null;
+        const overlappingDates = !!(existingMaxDate && newMinDate && newMinDate <= existingMaxDate);
+
         // Salvar no banco
         const importId = await db.createStatementImport(ctx.user.id, {
           accountId: input.accountId,
@@ -1356,7 +1365,7 @@ Retorne SOMENTE um array JSON com os mesmos índices, sem texto extra.`;
         await db.insertStatementRows(ctx.user.id, importId, input.accountId, enrichedRows);
 
         const autoLearned = enrichedRows.filter((r) => parseFloat(r.confidence) >= 0.97).length;
-        return { importId, total: enrichedRows.length, autoLearned };
+        return { importId, total: enrichedRows.length, autoLearned, overlappingDates, existingMaxDate };
       }),
 
     approveRow: protectedProcedure

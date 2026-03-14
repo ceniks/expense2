@@ -1712,6 +1712,22 @@ export async function createStatementImport(userId: number, data: {
   return result[0].insertId;
 }
 
+/** Returns the max imported date per account for the user (used to show "updated until" indicator) */
+export async function getAccountMaxDates(userId: number): Promise<{ accountId: number; maxDate: string }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const groupId = await getUserGroupId(userId);
+  const rows = await db
+    .select({
+      accountId: statementRows.accountId,
+      maxDate: sql<string>`MAX(${statementRows.date})`,
+    })
+    .from(statementRows)
+    .where(groupId ? eq(statementRows.groupId, groupId) : eq(statementRows.userId, userId))
+    .groupBy(statementRows.accountId);
+  return rows.map((r) => ({ accountId: r.accountId, maxDate: r.maxDate }));
+}
+
 export async function listStatementImports(userId: number) {
   const db = await getDb();
   if (!db) return [];
