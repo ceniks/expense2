@@ -620,7 +620,7 @@ export async function payMonthlyBillNoRecord(userId: number, data: { id: number;
 export async function markFinancingInstallmentPaid(financingId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [f] = await db.select().from(financings).where(and(eq(financings.id, financingId), eq(financings.userId, userId)));
+  const [f] = await db.select().from(financings).where(eq(financings.id, financingId));
   if (!f) throw new Error("Financiamento não encontrado");
   await db.update(financings)
     .set({ paidInstallments: f.paidInstallments + 1 })

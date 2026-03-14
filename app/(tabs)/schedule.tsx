@@ -376,6 +376,8 @@ export default function ScheduleScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<UnifiedItem | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [alreadyPaidItem, setAlreadyPaidItem] = useState<UnifiedItem | null>(null);
+  const [alreadyPaidSaving, setAlreadyPaidSaving] = useState(false);
 
   const [selectedItem, setSelectedItem] = useState<UnifiedItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -429,30 +431,27 @@ export default function ScheduleScreen() {
   }, []);
 
   const handleAlreadyPaid = useCallback((item: UnifiedItem) => {
-    Alert.alert(
-      "Marcar como Já Pago",
-      `Marcar "${item.name}" como pago sem lançar no extrato?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Confirmar",
-          onPress: async () => {
-            try {
-              if (item.type === "invoice" && item.installmentId) {
-                await markPaidNoRecordMutation.mutateAsync({ installmentId: item.installmentId });
-              } else if (item.type === "bill" && item.billId && item.yearMonth) {
-                await payBillNoRecordMutation.mutateAsync({ id: item.billId, yearMonth: item.yearMonth });
-              } else if (item.type === "financing" && item.financingId) {
-                await markFinancingPaidMutation.mutateAsync({ id: item.financingId });
-              }
-            } catch {
-              Alert.alert("Erro", "Não foi possível marcar como pago.");
-            }
-          },
-        },
-      ]
-    );
-  }, [markPaidNoRecordMutation, payBillNoRecordMutation, markFinancingPaidMutation]);
+    setAlreadyPaidItem(item);
+  }, []);
+
+  const handleConfirmAlreadyPaid = useCallback(async () => {
+    if (!alreadyPaidItem) return;
+    setAlreadyPaidSaving(true);
+    try {
+      if (alreadyPaidItem.type === "invoice" && alreadyPaidItem.installmentId) {
+        await markPaidNoRecordMutation.mutateAsync({ installmentId: alreadyPaidItem.installmentId });
+      } else if (alreadyPaidItem.type === "bill" && alreadyPaidItem.billId && alreadyPaidItem.yearMonth) {
+        await payBillNoRecordMutation.mutateAsync({ id: alreadyPaidItem.billId, yearMonth: alreadyPaidItem.yearMonth });
+      } else if (alreadyPaidItem.type === "financing" && alreadyPaidItem.financingId) {
+        await markFinancingPaidMutation.mutateAsync({ id: alreadyPaidItem.financingId });
+      }
+      setAlreadyPaidItem(null);
+    } catch {
+      Alert.alert("Erro", "Não foi possível marcar como pago.");
+    } finally {
+      setAlreadyPaidSaving(false);
+    }
+  }, [alreadyPaidItem, markPaidNoRecordMutation, payBillNoRecordMutation, markFinancingPaidMutation]);
 
   const handleUnpay = useCallback(async (item: UnifiedItem) => {
     if (item.type !== "invoice" || !item.installmentId) return;
@@ -769,6 +768,38 @@ export default function ScheduleScreen() {
                 style={({ pressed }) => [styles.alertBtn, { backgroundColor: "#EF4444", borderColor: "#EF4444" }, pressed && { opacity: 0.7 }]}
               >
                 <Text style={[styles.alertBtnText, { color: "#FFF" }]}>Excluir</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Já Pago Confirmation Modal */}
+      <Modal visible={!!alreadyPaidItem} transparent animationType="fade" onRequestClose={() => setAlreadyPaidItem(null)}>
+        <View style={styles.overlay}>
+          <View style={[styles.alertBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.alertTitle, { color: colors.foreground }]}>Já Pago</Text>
+            <Text style={[styles.alertSubtitle, { color: colors.muted }]}>
+              Marcar "{alreadyPaidItem?.name}" como pago sem lançar no extrato?
+            </Text>
+            {alreadyPaidItem && (
+              <Text style={[styles.alertAmount, { color: colors.primary }]}>{formatCurrency(alreadyPaidItem.amount)}</Text>
+            )}
+            <View style={styles.alertActions}>
+              <Pressable
+                onPress={() => setAlreadyPaidItem(null)}
+                style={({ pressed }) => [styles.alertBtn, { borderColor: colors.border }, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={[styles.alertBtnText, { color: colors.muted }]}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={alreadyPaidSaving ? undefined : handleConfirmAlreadyPaid}
+                style={({ pressed }) => [styles.alertBtn, styles.alertBtnPrimary, { backgroundColor: colors.primary }, pressed && { opacity: 0.7 }]}
+              >
+                {alreadyPaidSaving
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={[styles.alertBtnText, { color: "#FFF" }]}>Confirmar</Text>
+                }
               </Pressable>
             </View>
           </View>
