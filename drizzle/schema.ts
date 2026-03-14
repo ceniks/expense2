@@ -77,6 +77,7 @@ export const payments = mysqlTable("payments", {
   profile: mysqlEnum("profile", ["Pessoal", "Empresa"]).notNull().default("Pessoal"),
   imageUrl: text("imageUrl"),   // S3 URL of the receipt image
   notes: text("notes"),
+  bankAccountId: int("bankAccountId"),  // preenchido quando veio de um extrato bancário
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

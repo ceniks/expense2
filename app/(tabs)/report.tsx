@@ -20,6 +20,7 @@ import { usePayments, getCategoryColor, Profile, Payment } from "@/lib/payments-
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import * as Haptics from "expo-haptics";
 import { exportCSV, exportXLS, exportPDF, ExportFormat, ExportProfile } from "@/lib/export-utils";
+import { trpc } from "@/lib/trpc";
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -226,6 +227,14 @@ export default function ReportScreen() {
 
   const payments = getMonthPayments(year, month, activeProfile);
   const total = getMonthTotal(year, month, activeProfile);
+
+  // Relatório por conta — mês selecionado
+  const startDate = `${year}-${String(month).padStart(2,"0")}-01`;
+  const endDate = `${year}-${String(month).padStart(2,"0")}-${new Date(year, month, 0).getDate()}`;
+  const { data: byAccount = [] } = trpc.payments.byBankAccount.useQuery({ startDate, endDate });
+  const backfillMut = trpc.payments.backfillBankAccounts.useMutation({
+    onSuccess: (count) => Alert.alert("Backfill concluído", `${count} lançamento(s) vinculado(s) às contas.`),
+  });
 
   // Group by category
   const categoryPaymentsMap: Record<string, Payment[]> = {};
@@ -485,6 +494,40 @@ export default function ReportScreen() {
                   }
                 />
               ))}
+            </View>
+
+            {/* Por conta bancária */}
+            <View style={styles.section}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Por conta bancária</Text>
+                <Pressable
+                  onPress={() => backfillMut.mutate()}
+                  disabled={backfillMut.isPending}
+                  style={({ pressed }) => ({ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.border, opacity: pressed || backfillMut.isPending ? 0.5 : 1 })}
+                >
+                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>
+                    {backfillMut.isPending ? "Atualizando..." : "Atualizar histórico"}
+                  </Text>
+                </Pressable>
+              </View>
+              {byAccount.length === 0 ? (
+                <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center", paddingVertical: 12 }}>
+                  Nenhum lançamento de extrato neste mês.
+                </Text>
+              ) : (
+                byAccount.map((acc) => (
+                  <View key={acc.bankAccountId ?? "manual"} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: acc.accountColor }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14 }}>{acc.accountName}</Text>
+                      {acc.accountBank && <Text style={{ color: colors.muted, fontSize: 12 }}>{acc.accountBank} · {acc.count} lançamento{acc.count !== 1 ? "s" : ""}</Text>}
+                    </View>
+                    <Text style={{ color: colors.error, fontWeight: "700", fontSize: 15 }}>
+                      {formatCurrency(acc.total)}
+                    </Text>
+                  </View>
+                ))
+              )}
             </View>
           </>
         )}

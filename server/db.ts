@@ -1890,6 +1890,10 @@ export async function approveStatementRow(rowId: number, userId: number, data: {
   if (!db) throw new Error("Database not available");
   const groupId = await getUserGroupId(userId);
 
+  // Busca accountId da linha para vincular ao pagamento
+  const rowInfo = await db.select({ importId: statementRows.importId, accountId: statementRows.accountId })
+    .from(statementRows).where(eq(statementRows.id, rowId)).limit(1);
+
   const payResult = await db.insert(payments).values({
     userId,
     groupId,
@@ -1898,6 +1902,7 @@ export async function approveStatementRow(rowId: number, userId: number, data: {
     date: data.date,
     category: data.category,
     profile: data.profile,
+    bankAccountId: rowInfo[0]?.accountId ?? null,
   });
   const paymentId = payResult[0].insertId;
   await db.update(statementRows).set({
@@ -1909,12 +1914,10 @@ export async function approveStatementRow(rowId: number, userId: number, data: {
   }).where(eq(statementRows.id, rowId));
 
   // Atualiza contador no import
-  const rowData = await db.select({ importId: statementRows.importId })
-    .from(statementRows).where(eq(statementRows.id, rowId)).limit(1);
-  if (rowData.length > 0) {
+  if (rowInfo.length > 0) {
     await db.update(bankStatementImports)
       .set({ imported: bankStatementImports.imported })
-      .where(eq(bankStatementImports.id, rowData[0].importId));
+      .where(eq(bankStatementImports.id, rowInfo[0].importId));
   }
   return paymentId;
 }
@@ -1949,7 +1952,7 @@ export async function bulkApproveStatementRows(
     const row = rows[0];
     const description = row.suggestedDescription ?? row.description;
     const payResult = await db.insert(payments).values({
-      userId, groupId, description, amount: row.amount, date: row.date, category, profile,
+      userId, groupId, description, amount: row.amount, date: row.date, category, profile, bankAccountId: row.accountId ?? null,
     });
     await db.update(statementRows).set({
       status: "approved",
@@ -1996,12 +1999,68 @@ export async function approveAllStatementRows(importId: number, userId: number, 
       date: row.date,
       category: row.suggestedCategory ?? "Outros",
       profile: row.suggestedProfile ?? "Pessoal",
+      bankAccountId: row.accountId ?? null,
     });
     await db.update(statementRows).set({ status: "approved", paymentId: payResult[0].insertId }).where(eq(statementRows.id, row.id));
     count++;
   }
   await db.update(bankStatementImports).set({ imported: count }).where(eq(bankStatementImports.id, importId));
   return count;
+}
+
+/** Backfill: preenche bankAccountId em pagamentos antigos já aprovados via extrato */
+export async function backfillPaymentBankAccounts(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const groupId = await getUserGroupId(userId);
+
+  // Busca pagamentos sem bankAccountId que têm uma statementRow vinculada
+  const orphans = groupId
+    ? await db.select({ paymentId: statementRows.paymentId, accountId: statementRows.accountId })
+        .from(statementRows)
+        .innerJoin(payments, eq(statementRows.paymentId, payments.id))
+        .where(and(eq(statementRows.groupId, groupId), eq(statementRows.status, "approved"), sql`${payments.bankAccountId} IS NULL`))
+    : await db.select({ paymentId: statementRows.paymentId, accountId: statementRows.accountId })
+        .from(statementRows)
+        .innerJoin(payments, eq(statementRows.paymentId, payments.id))
+        .where(and(eq(statementRows.userId, userId), eq(statementRows.status, "approved"), sql`${payments.bankAccountId} IS NULL`));
+
+  for (const { paymentId, accountId } of orphans) {
+    if (paymentId && accountId) {
+      await db.update(payments).set({ bankAccountId: accountId }).where(eq(payments.id, paymentId));
+    }
+  }
+  return orphans.length;
+}
+
+/** Relatório por conta bancária: total de débitos por conta no período */
+export async function getPaymentsByBankAccount(userId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const groupId = await getUserGroupId(userId);
+
+  const conditions = [groupId ? eq(payments.groupId, groupId) : eq(payments.userId, userId)];
+  if (startDate) conditions.push(sql`${payments.date} >= ${startDate}`);
+  if (endDate) conditions.push(sql`${payments.date} <= ${endDate}`);
+
+  const rows = await db.select({
+    bankAccountId: payments.bankAccountId,
+    total: sql<string>`SUM(${payments.amount})`,
+    count: sql<number>`COUNT(*)`,
+  }).from(payments).where(and(...conditions)).groupBy(payments.bankAccountId);
+
+  const accounts = await listBankAccounts(userId);
+  return rows.map((r) => {
+    const acc = accounts.find((a: any) => a.id === r.bankAccountId);
+    return {
+      bankAccountId: r.bankAccountId,
+      accountName: acc?.name ?? (r.bankAccountId ? `Conta #${r.bankAccountId}` : "Manual / Sem conta"),
+      accountBank: acc?.bank ?? null,
+      accountColor: acc?.color ?? "#6366f1",
+      total: parseFloat(r.total ?? "0"),
+      count: r.count,
+    };
+  }).sort((a, b) => b.total - a.total);
 }
 
 // ─── Configuração de IA ───────────────────────────────────────────────────────

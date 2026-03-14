@@ -253,6 +253,13 @@ Se não conseguir extrair algum campo, retorne null para ele.`,
   payments: router({
     list: protectedProcedure.query(({ ctx }) => db.getUserPayments(ctx.user.id)),
 
+    byBankAccount: protectedProcedure
+      .input(z.object({ startDate: z.string().optional(), endDate: z.string().optional() }))
+      .query(({ ctx, input }) => db.getPaymentsByBankAccount(ctx.user.id, input.startDate, input.endDate)),
+
+    backfillBankAccounts: protectedProcedure
+      .mutation(({ ctx }) => db.backfillPaymentBankAccounts(ctx.user.id)),
+
     create: protectedProcedure
       .input(z.object({
         description: z.string().min(1).max(500),
