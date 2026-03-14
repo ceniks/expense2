@@ -31,16 +31,23 @@ const PROVIDER_URLS: Record<AIProvider, string> = {
   gpt:    "https://api.openai.com/v1/chat/completions",
 };
 
+/** Remove markdown code fences que alguns modelos adicionam ao redor do JSON */
+function stripMarkdown(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+}
+
 /** Chama a IA com o config do usuário e retorna o conteúdo como string. */
 export async function callAI(config: AIConfig, messages: AIMessage[]): Promise<string> {
   const model = config.model || DEFAULT_MODELS[config.provider];
 
+  let result: string;
   if (config.provider === "claude") {
-    return callClaude(config.apiKey, model, messages);
+    result = await callClaude(config.apiKey, model, messages);
+  } else {
+    const url = config.apiUrl ?? PROVIDER_URLS[config.provider];
+    result = await callOpenAICompat(config.provider, config.apiKey, model, messages, url);
   }
-  // Usa URL customizada se fornecida (ex: forgeApiUrl do Manus)
-  const url = config.apiUrl ?? PROVIDER_URLS[config.provider];
-  return callOpenAICompat(config.provider, config.apiKey, model, messages, url);
+  return stripMarkdown(result);
 }
 
 /** Claude usa formato próprio (Anthropic Messages API) */
