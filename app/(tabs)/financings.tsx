@@ -9,6 +9,7 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -28,6 +29,34 @@ function progressColor(pct: number) {
   if (pct >= 0.6) return "#3B82F6";
   if (pct >= 0.3) return "#F59E0B";
   return "#EF4444";
+}
+
+/** Verifica se a parcela do mês selecionado já foi paga (baseado no paidInstallments) */
+function isFinancingPaidForMonth(
+  f: { paidInstallments: number; totalInstallments: number; dueDay: number },
+  selYear: number,
+  selMonth: number,
+  now: Date,
+): boolean {
+  const remaining = f.totalInstallments - f.paidInstallments;
+  if (remaining === 0) return false; // Quitado — vai para outra seção
+  if (f.paidInstallments === 0) return false; // Nenhuma parcela paga ainda
+
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth() + 1;
+  const nowDay = now.getDate();
+
+  // Mês em que vence a próxima parcela não paga
+  let nextYear = nowYear;
+  let nextMonth = nowMonth;
+  if (nowDay > f.dueDay) {
+    nextMonth += 1;
+    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+  }
+
+  // Se instOffset < 0, a parcela do mês selecionado já está paga
+  const instOffset = (selYear - nextYear) * 12 + (selMonth - nextMonth);
+  return instOffset < 0;
 }
 
 function currentYearMonth() {
@@ -150,16 +179,18 @@ export default function FinancingsScreen() {
   const now = new Date();
   const [selYear, selMonth] = selectedYearMonth.split("-").map(Number);
 
-  const { overdueFinancings, dueFinancings, paidFinancings } = useMemo(() => {
+  const { overdueFinancings, dueFinancings, paidThisMonthFinancings, paidFinancings } = useMemo(() => {
     const overdue: typeof financings = [];
     const due: typeof financings = [];
-    const paid: typeof financings = [];
+    const paidThisMonth: typeof financings = [];
+    const paid: typeof financings = []; // quitados
     for (const f of financings) {
       const remaining = f.totalInstallments - f.paidInstallments;
       if (remaining === 0) {
         paid.push(f);
+      } else if (isFinancingPaidForMonth(f, selYear, selMonth, now)) {
+        paidThisMonth.push(f);
       } else {
-        // Check if due day has passed for selected month
         const isSelectedMonthCurrent =
           selYear === now.getFullYear() && selMonth === now.getMonth() + 1;
         const isSelectedMonthPast =
@@ -175,7 +206,7 @@ export default function FinancingsScreen() {
         }
       }
     }
-    return { overdueFinancings: overdue, dueFinancings: due, paidFinancings: paid };
+    return { overdueFinancings: overdue, dueFinancings: due, paidThisMonthFinancings: paidThisMonth, paidFinancings: paid };
   }, [financings, selectedYearMonth]);
 
   const { overdueBills, dueBills, paidBills } = useMemo(() => {
@@ -294,8 +325,12 @@ export default function FinancingsScreen() {
     setBillModal(false);
   }
 
-  function handleBillAlreadyPaid(bill: any) {
-    payBillNoRecord.mutate({ id: bill.id, yearMonth: selectedYearMonth });
+  async function handleBillAlreadyPaid(bill: any) {
+    try {
+      await payBillNoRecord.mutateAsync({ id: bill.id, yearMonth: selectedYearMonth });
+    } catch (e: any) {
+      Alert.alert("Erro", e?.message ?? "Não foi possível marcar como pago.");
+    }
   }
 
   function handleBillPay(bill: any) {
@@ -553,6 +588,12 @@ export default function FinancingsScreen() {
               <>
                 {renderSectionHeader("A Pagar", "#F59E0B", dueFinancings.length)}
                 {dueFinancings.map((f) => renderFinancingCard(f, "#F59E0B"))}
+              </>
+            )}
+            {paidThisMonthFinancings.length > 0 && (
+              <>
+                {renderSectionHeader("Pago", "#22C55E", paidThisMonthFinancings.length)}
+                {paidThisMonthFinancings.map((f) => renderFinancingCard(f, "#22C55E"))}
               </>
             )}
             {paidFinancings.length > 0 && (

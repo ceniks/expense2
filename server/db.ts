@@ -878,8 +878,8 @@ export async function listMonthlyBills(userId: number, targetYearMonth?: string)
   const group = await getOrCreateUserGroup(userId);
   const groupId = group?.id ?? null;
   const bills = groupId
-    ? await db.select().from(monthlyBills).where(eq(monthlyBills.groupId, groupId)).orderBy(monthlyBills.dueDay)
-    : await db.select().from(monthlyBills).where(eq(monthlyBills.userId, userId)).orderBy(monthlyBills.dueDay);
+    ? await db.select().from(monthlyBills).where(and(eq(monthlyBills.groupId, groupId), eq(monthlyBills.isActive, true))).orderBy(monthlyBills.dueDay)
+    : await db.select().from(monthlyBills).where(and(eq(monthlyBills.userId, userId), eq(monthlyBills.isActive, true))).orderBy(monthlyBills.dueDay);
   const now = new Date();
   const yearMonth = targetYearMonth ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const billIds = bills.map((b) => b.id);
@@ -1819,7 +1819,7 @@ export async function insertStatementRows(userId: number, importId: number, acco
 
   // Passo 1: inserir tudo como pending para poder fazer detecção de transferências
   await db.insert(statementRows).values(
-    rows.map((r) => ({ ...r, userId, groupId, importId, accountId, status: "pending" }))
+    rows.map((r) => ({ ...r, userId, groupId, importId, accountId, status: "pending" as const }))
   );
 
   // Passo 2: detectar transferências — mesmo usuário, mesma data, mesmo valor, tipos opostos, contas diferentes
@@ -1940,7 +1940,7 @@ export async function approveStatementRow(rowId: number, userId: number, data: {
   // Atualiza contador no import
   if (rowInfo.length > 0) {
     await db.update(bankStatementImports)
-      .set({ imported: bankStatementImports.imported })
+      .set({ imported: sql`${bankStatementImports.imported} + 1` })
       .where(eq(bankStatementImports.id, rowInfo[0].importId));
   }
   return paymentId;
