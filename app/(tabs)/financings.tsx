@@ -130,24 +130,30 @@ const emptyBillForm = (): BillFormData => ({
 
 export default function FinancingsScreen() {
   const colors = useColors();
+  const utils = trpc.useUtils();
   const [tab, setTab] = useState<"financings" | "bills">("financings");
   const [selectedYearMonth, setSelectedYearMonth] = useState(currentYearMonth());
   const isCurrentMonth = selectedYearMonth === currentYearMonth();
 
+  const invalidateAll = () => {
+    utils.financings.list.invalidate();
+    utils.monthlyBills.list.invalidate();
+  };
+
   // ── Financing queries ──
-  const { data: financings = [], refetch: refetchFinancings, isLoading: loadingFin } =
+  const { data: financings = [], isLoading: loadingFin } =
     trpc.financings.list.useQuery();
-  const createFinancing = trpc.financings.create.useMutation({ onSuccess: () => refetchFinancings() });
-  const updateFinancing = trpc.financings.update.useMutation({ onSuccess: () => refetchFinancings() });
-  const registerPayment = trpc.financings.registerPayment.useMutation({ onSuccess: () => refetchFinancings() });
-  const markFinancingPaid = trpc.financings.markInstallmentPaid.useMutation({ onSuccess: () => refetchFinancings() });
-  const deleteFinancing = trpc.financings.delete.useMutation({ onSuccess: () => refetchFinancings() });
+  const createFinancing = trpc.financings.create.useMutation({ onSuccess: invalidateAll });
+  const updateFinancing = trpc.financings.update.useMutation({ onSuccess: invalidateAll });
+  const registerPayment = trpc.financings.registerPayment.useMutation({ onSuccess: invalidateAll });
+  const markFinancingPaid = trpc.financings.markInstallmentPaid.useMutation({ onSuccess: invalidateAll });
+  const deleteFinancing = trpc.financings.delete.useMutation({ onSuccess: invalidateAll });
 
   // ── Monthly bill queries ──
-  const { data: bills = [], refetch: refetchBills, isLoading: loadingBills } =
+  const { data: bills = [], isLoading: loadingBills } =
     trpc.monthlyBills.list.useQuery({ yearMonth: selectedYearMonth });
-  const payBillNoRecord = trpc.monthlyBills.payNoRecord.useMutation({ onSuccess: () => refetchBills() });
-  const unpayBill = trpc.monthlyBills.unpay.useMutation({ onSuccess: () => refetchBills() });
+  const payBillNoRecord = trpc.monthlyBills.payNoRecord.useMutation({ onSuccess: invalidateAll });
+  const unpayBill = trpc.monthlyBills.unpay.useMutation({ onSuccess: invalidateAll });
 
   // ── Dynamic categories ──
   const { data: categoriesData = [], refetch: refetchCategories } = trpc.categories.list.useQuery(
@@ -157,10 +163,10 @@ export default function FinancingsScreen() {
   const CATEGORIES = categoriesData.length > 0
     ? categoriesData.map((c: any) => c.name)
     : FALLBACK_CATEGORIES;
-  const createBill = trpc.monthlyBills.create.useMutation({ onSuccess: () => refetchBills() });
-  const updateBill = trpc.monthlyBills.update.useMutation({ onSuccess: () => refetchBills() });
-  const payBill = trpc.monthlyBills.pay.useMutation({ onSuccess: () => refetchBills() });
-  const deleteBill = trpc.monthlyBills.delete.useMutation({ onSuccess: () => refetchBills() });
+  const createBill = trpc.monthlyBills.create.useMutation({ onSuccess: invalidateAll });
+  const updateBill = trpc.monthlyBills.update.useMutation({ onSuccess: invalidateAll });
+  const payBill = trpc.monthlyBills.pay.useMutation({ onSuccess: invalidateAll });
+  const deleteBill = trpc.monthlyBills.delete.useMutation({ onSuccess: invalidateAll });
 
   // ── Financing modal state ──
   const [finModal, setFinModal] = useState(false);
