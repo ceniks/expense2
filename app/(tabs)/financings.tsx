@@ -31,32 +31,24 @@ function progressColor(pct: number) {
   return "#EF4444";
 }
 
-/** Verifica se a parcela do mês selecionado já foi paga (baseado no paidInstallments) */
+/** Verifica se a parcela do mês selecionado já foi paga usando startDate como referência */
 function isFinancingPaidForMonth(
-  f: { paidInstallments: number; totalInstallments: number; dueDay: number },
+  f: { paidInstallments: number; totalInstallments: number; startDate: string },
   selYear: number,
   selMonth: number,
-  now: Date,
 ): boolean {
-  const remaining = f.totalInstallments - f.paidInstallments;
-  if (remaining === 0) return false; // Quitado — vai para outra seção
-  if (f.paidInstallments === 0) return false; // Nenhuma parcela paga ainda
+  if (f.paidInstallments === 0) return false;
+  if (f.totalInstallments - f.paidInstallments === 0) return false; // Quitado
 
-  const nowYear = now.getFullYear();
-  const nowMonth = now.getMonth() + 1;
-  const nowDay = now.getDate();
+  // startDate = YYYY-MM-DD — mês da 1ª parcela
+  const startYear = parseInt(f.startDate.slice(0, 4));
+  const startMonth = parseInt(f.startDate.slice(5, 7));
 
-  // Mês em que vence a próxima parcela não paga
-  let nextYear = nowYear;
-  let nextMonth = nowMonth;
-  if (nowDay > f.dueDay) {
-    nextMonth += 1;
-    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
-  }
+  // Qual número de parcela cai no mês selecionado?
+  const installmentNum = (selYear - startYear) * 12 + (selMonth - startMonth) + 1;
 
-  // Se instOffset < 0, a parcela do mês selecionado já está paga
-  const instOffset = (selYear - nextYear) * 12 + (selMonth - nextMonth);
-  return instOffset < 0;
+  // A parcela existe nesse mês E já foi paga?
+  return installmentNum >= 1 && installmentNum <= f.paidInstallments;
 }
 
 function currentYearMonth() {
@@ -194,7 +186,7 @@ export default function FinancingsScreen() {
       const remaining = f.totalInstallments - f.paidInstallments;
       if (remaining === 0) {
         paid.push(f);
-      } else if (isFinancingPaidForMonth(f, selYear, selMonth, now)) {
+      } else if (isFinancingPaidForMonth(f, selYear, selMonth)) {
         paidThisMonth.push(f);
       } else {
         const isSelectedMonthCurrent =
