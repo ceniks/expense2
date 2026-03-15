@@ -10,8 +10,9 @@ import {
   Image,
   Modal,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "expo-router";
 import Svg, { Path, G } from "react-native-svg";
 import { ScreenContainer } from "@/components/screen-container";
@@ -224,8 +225,20 @@ export default function ReportScreen() {
   const [activeProfile, setActiveProfile] = useState<Profile | "all">("all");
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const payments = getMonthPayments(year, month, activeProfile);
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allPayments.filter((p) => p.description.toLowerCase().includes(q));
+  }, [allPayments, searchQuery]);
+
+  const searchTotal = useMemo(
+    () => searchResults.reduce((s, p) => s + p.amount, 0),
+    [searchResults]
+  );
   const total = getMonthTotal(year, month, activeProfile);
 
   // Relatório por conta — mês selecionado
@@ -439,6 +452,56 @@ export default function ReportScreen() {
           ))}
         </View>
 
+        {/* Search bar */}
+        <View style={[styles.searchRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <IconSymbol name="magnifyingglass" size={16} color={colors.muted} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Buscar por descrição..."
+            placeholderTextColor={colors.muted}
+            style={[styles.searchInput, { color: colors.foreground }]}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+              <IconSymbol name="xmark.circle.fill" size={16} color={colors.muted} />
+            </Pressable>
+          )}
+        </View>
+
+        {/* Search results */}
+        {searchQuery.trim().length > 0 ? (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <View style={[styles.totalCard, { backgroundColor: colors.primary, marginHorizontal: 0, marginBottom: 16, marginTop: 8 }]}>
+              <Text style={styles.totalLabel}>Total encontrado</Text>
+              <Text style={styles.totalValue}>{formatCurrency(searchTotal)}</Text>
+              <Text style={styles.totalCount}>{searchResults.length} pagamento{searchResults.length !== 1 ? "s" : ""}</Text>
+            </View>
+            {searchResults.length === 0 ? (
+              <View style={styles.emptyState}>
+                <IconSymbol name="magnifyingglass" size={40} color={colors.muted} />
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Nenhum resultado</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>Nenhum pagamento com essa descrição.</Text>
+              </View>
+            ) : (
+              <View style={[styles.expandedContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                {searchResults.map((p) => (
+                  <CategoryPaymentItem
+                    key={p.id}
+                    payment={p}
+                    catColor={getCategoryColor(categories, p.category)}
+                    onPress={() => router.push({ pathname: "/(payment)/[id]" as any, params: { id: p.id } })}
+                    onDelete={() => handleDeletePayment(p.id)}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <>
+
         {/* Month selector */}
         <View style={[styles.monthSelector, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Pressable onPress={prevMonth} style={({ pressed }) => [styles.arrowBtn, { opacity: pressed ? 0.5 : 1 }]}>
@@ -531,6 +594,8 @@ export default function ReportScreen() {
             </View>
           </>
         )}
+          </>
+        )}
       </ScrollView>
     </ScreenContainer>
   );
@@ -566,6 +631,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 2,
+    outlineStyle: "none",
+  } as any,
   monthSelector: {
     flexDirection: "row",
     alignItems: "center",
