@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -45,18 +45,6 @@ function dueDateISO(selYear: number, selMonth: number, dueDay: number): string {
   return `${selYear}-${String(selMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-/** Número da parcela do financiamento que cai no mês selecionado (1-based, 0 = não existe) */
-function financingInstallmentNum(
-  f: { paidInstallments: number; totalInstallments: number; startDate: string },
-  selYear: number,
-  selMonth: number,
-): number {
-  const startYear = parseInt(f.startDate.slice(0, 4));
-  const startMonth = parseInt(f.startDate.slice(5, 7));
-  const num = (selYear - startYear) * 12 + (selMonth - startMonth) + 1;
-  if (num < 1 || num > f.totalInstallments) return 0;
-  return num;
-}
 
 function currentYearMonth() {
   const now = new Date();
@@ -139,13 +127,21 @@ export default function FinancingsScreen() {
     utils.monthlyBills.list.invalidate();
   };
 
+  // IDs de financiamentos marcados como pagos nesta sessão (para o mês atual)
+  const [sessionPaidIds, setSessionPaidIds] = useState<Set<number>>(new Set());
+  useEffect(() => { setSessionPaidIds(new Set()); }, [selectedYearMonth]);
+
   // ── Financing queries ──
   const { data: financings = [], isLoading: loadingFin } =
     trpc.financings.list.useQuery();
   const createFinancing = trpc.financings.create.useMutation({ onSuccess: invalidateAll });
   const updateFinancing = trpc.financings.update.useMutation({ onSuccess: invalidateAll });
-  const registerPayment = trpc.financings.registerPayment.useMutation({ onSuccess: invalidateAll });
-  const markFinancingPaid = trpc.financings.markInstallmentPaid.useMutation({ onSuccess: invalidateAll });
+  const registerPayment = trpc.financings.registerPayment.useMutation({
+    onSuccess: (_data, vars) => { setSessionPaidIds(prev => new Set([...prev, vars.id])); invalidateAll(); },
+  });
+  const markFinancingPaid = trpc.financings.markInstallmentPaid.useMutation({
+    onSuccess: (_data, vars) => { setSessionPaidIds(prev => new Set([...prev, vars.id])); invalidateAll(); },
+  });
   const deleteFinancing = trpc.financings.delete.useMutation({ onSuccess: invalidateAll });
 
   // ── Monthly bill queries ──
@@ -196,11 +192,8 @@ export default function FinancingsScreen() {
         quitados.push(f);
         continue;
       }
-      const instNum = financingInstallmentNum(f, selYear, selMonth);
-      if (instNum === 0) continue; // sem parcela neste mês
-      const isPaid = instNum <= f.paidInstallments;
       const dueDate = dueDateISO(selYear, selMonth, f.dueDay);
-      if (isPaid) {
+      if (sessionPaidIds.has(f.id)) {
         paidThisMonth.push(f);
       } else if (dueDate < today) {
         overdue.push(f);
@@ -214,7 +207,7 @@ export default function FinancingsScreen() {
       dueFinancings: due.sort(byDueDay),
       paidFinancings: quitados,
     };
-  }, [financings, selectedYearMonth, today]);
+  }, [financings, selectedYearMonth, today, sessionPaidIds]);
 
   const { overdueBills, paidBills, dueBills } = useMemo(() => {
     const overdue: typeof bills = [];
