@@ -232,8 +232,8 @@ export default function ReportScreen() {
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return allPayments.filter((p) => p.description.toLowerCase().includes(q));
-  }, [allPayments, searchQuery]);
+    return payments.filter((p) => p.description.toLowerCase().includes(q));
+  }, [payments, searchQuery]);
 
   const searchTotal = useMemo(
     () => searchResults.reduce((s, p) => s + p.amount, 0),
