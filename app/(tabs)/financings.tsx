@@ -31,24 +31,31 @@ function progressColor(pct: number) {
   return "#EF4444";
 }
 
-/** Verifica se a parcela do mês selecionado já foi paga usando startDate como referência */
-function isFinancingPaidForMonth(
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function dueDateISO(selYear: number, selMonth: number, dueDay: number): string {
+  const d = Math.min(dueDay, daysInMonth(selYear, selMonth));
+  return `${selYear}-${String(selMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** Número da parcela do financiamento que cai no mês selecionado (1-based, 0 = não existe) */
+function financingInstallmentNum(
   f: { paidInstallments: number; totalInstallments: number; startDate: string },
   selYear: number,
   selMonth: number,
-): boolean {
-  if (f.paidInstallments === 0) return false;
-  if (f.totalInstallments - f.paidInstallments === 0) return false; // Quitado
-
-  // startDate = YYYY-MM-DD — mês da 1ª parcela
+): number {
   const startYear = parseInt(f.startDate.slice(0, 4));
   const startMonth = parseInt(f.startDate.slice(5, 7));
-
-  // Qual número de parcela cai no mês selecionado?
-  const installmentNum = (selYear - startYear) * 12 + (selMonth - startMonth) + 1;
-
-  // A parcela existe nesse mês E já foi paga?
-  return installmentNum >= 1 && installmentNum <= f.paidInstallments;
+  const num = (selYear - startYear) * 12 + (selMonth - startMonth) + 1;
+  if (num < 1 || num > f.totalInstallments) return 0;
+  return num;
 }
 
 function currentYearMonth() {
@@ -174,64 +181,61 @@ export default function FinancingsScreen() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "fin" | "bill"; id: number; name: string } | null>(null);
 
   // ── Month-based section grouping ──
-  const now = new Date();
   const [selYear, selMonth] = selectedYearMonth.split("-").map(Number);
 
-  const { overdueFinancings, dueFinancings, paidThisMonthFinancings, paidFinancings } = useMemo(() => {
-    const overdue: typeof financings = [];
-    const due: typeof financings = [];
-    const paidThisMonth: typeof financings = [];
-    const paid: typeof financings = []; // quitados
-    for (const f of financings) {
-      const remaining = f.totalInstallments - f.paidInstallments;
-      if (remaining === 0) {
-        paid.push(f);
-      } else if (isFinancingPaidForMonth(f, selYear, selMonth)) {
-        paidThisMonth.push(f);
-      } else {
-        const isSelectedMonthCurrent =
-          selYear === now.getFullYear() && selMonth === now.getMonth() + 1;
-        const isSelectedMonthPast =
-          selYear < now.getFullYear() ||
-          (selYear === now.getFullYear() && selMonth < now.getMonth() + 1);
+  const today = todayISO();
+  const byDueDay = (a: { dueDay: number }, b: { dueDay: number }) => a.dueDay - b.dueDay;
 
-        if (isSelectedMonthPast) {
-          overdue.push(f);
-        } else if (isSelectedMonthCurrent && f.dueDay < now.getDate()) {
-          overdue.push(f);
-        } else {
-          due.push(f);
-        }
+  const { overdueFinancings, paidThisMonthFinancings, dueFinancings, paidFinancings } = useMemo(() => {
+    const overdue: typeof financings = [];
+    const paidThisMonth: typeof financings = [];
+    const due: typeof financings = [];
+    const quitados: typeof financings = [];
+    for (const f of financings) {
+      if (f.totalInstallments - f.paidInstallments === 0) {
+        quitados.push(f);
+        continue;
+      }
+      const instNum = financingInstallmentNum(f, selYear, selMonth);
+      if (instNum === 0) continue; // sem parcela neste mês
+      const isPaid = instNum <= f.paidInstallments;
+      const dueDate = dueDateISO(selYear, selMonth, f.dueDay);
+      if (isPaid) {
+        paidThisMonth.push(f);
+      } else if (dueDate < today) {
+        overdue.push(f);
+      } else {
+        due.push(f);
       }
     }
-    return { overdueFinancings: overdue, dueFinancings: due, paidThisMonthFinancings: paidThisMonth, paidFinancings: paid };
-  }, [financings, selectedYearMonth]);
+    return {
+      overdueFinancings: overdue.sort(byDueDay),
+      paidThisMonthFinancings: paidThisMonth.sort(byDueDay),
+      dueFinancings: due.sort(byDueDay),
+      paidFinancings: quitados,
+    };
+  }, [financings, selectedYearMonth, today]);
 
-  const { overdueBills, dueBills, paidBills } = useMemo(() => {
+  const { overdueBills, paidBills, dueBills } = useMemo(() => {
     const overdue: typeof bills = [];
-    const due: typeof bills = [];
     const paid: typeof bills = [];
+    const due: typeof bills = [];
     for (const b of bills) {
+      const dueDate = dueDateISO(selYear, selMonth, b.dueDay);
       if (b.paidThisMonth) {
         paid.push(b);
+      } else if (dueDate < today) {
+        overdue.push(b);
       } else {
-        const isSelectedMonthCurrent =
-          selYear === now.getFullYear() && selMonth === now.getMonth() + 1;
-        const isSelectedMonthPast =
-          selYear < now.getFullYear() ||
-          (selYear === now.getFullYear() && selMonth < now.getMonth() + 1);
-
-        if (isSelectedMonthPast) {
-          overdue.push(b);
-        } else if (isSelectedMonthCurrent && b.dueDay < now.getDate()) {
-          overdue.push(b);
-        } else {
-          due.push(b);
-        }
+        due.push(b);
       }
     }
-    return { overdueBills: overdue, dueBills: due, paidBills: paid };
-  }, [bills, selectedYearMonth]);
+    return {
+      overdueBills: overdue.sort(byDueDay),
+      paidBills: paid.sort(byDueDay),
+      dueBills: due.sort(byDueDay),
+    };
+  }, [bills, selectedYearMonth, today]);
 
   // ── Financing handlers ──
   function openNewFin() {
@@ -578,20 +582,20 @@ export default function FinancingsScreen() {
           <ScrollView contentContainerStyle={s.list}>
             {overdueFinancings.length > 0 && (
               <>
-                {renderSectionHeader("Vencidos", "#EF4444", overdueFinancings.length)}
+                {renderSectionHeader("Vencidas", "#EF4444", overdueFinancings.length)}
                 {overdueFinancings.map((f) => renderFinancingCard(f, "#EF4444"))}
+              </>
+            )}
+            {paidThisMonthFinancings.length > 0 && (
+              <>
+                {renderSectionHeader("Pagas", "#22C55E", paidThisMonthFinancings.length)}
+                {paidThisMonthFinancings.map((f) => renderFinancingCard(f, "#22C55E"))}
               </>
             )}
             {dueFinancings.length > 0 && (
               <>
                 {renderSectionHeader("A Pagar", "#F59E0B", dueFinancings.length)}
                 {dueFinancings.map((f) => renderFinancingCard(f, "#F59E0B"))}
-              </>
-            )}
-            {paidThisMonthFinancings.length > 0 && (
-              <>
-                {renderSectionHeader("Pago", "#22C55E", paidThisMonthFinancings.length)}
-                {paidThisMonthFinancings.map((f) => renderFinancingCard(f, "#22C55E"))}
               </>
             )}
             {paidFinancings.length > 0 && (
@@ -619,16 +623,16 @@ export default function FinancingsScreen() {
                 {overdueBills.map((b) => renderBillCard(b, "#EF4444"))}
               </>
             )}
-            {dueBills.length > 0 && (
-              <>
-                {renderSectionHeader("A Pagar", "#F59E0B", dueBills.length)}
-                {dueBills.map((b) => renderBillCard(b, "#F59E0B"))}
-              </>
-            )}
             {paidBills.length > 0 && (
               <>
                 {renderSectionHeader("Pagas", "#22C55E", paidBills.length)}
                 {paidBills.map((b) => renderBillCard(b, "#22C55E"))}
+              </>
+            )}
+            {dueBills.length > 0 && (
+              <>
+                {renderSectionHeader("A Pagar", "#F59E0B", dueBills.length)}
+                {dueBills.map((b) => renderBillCard(b, "#F59E0B"))}
               </>
             )}
           </ScrollView>
