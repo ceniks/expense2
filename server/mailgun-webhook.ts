@@ -10,34 +10,16 @@ import type { Express, Request, Response } from "express";
 import multer from "multer";
 import { invokeLLM, type Message } from "./_core/llm";
 import { storagePut } from "./storage";
-import { getDb } from "./db";
+import { getDb, getAISettings } from "./db";
 import { pendingInvoices, users, groupMembers } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { ENV } from "./_core/env";
+import type { AIConfig } from "./ai-provider";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
-/** Extract NF data from a PDF buffer using AI */
-async function extractInvoiceDataFromPdf(pdfBuffer: Buffer): Promise<{
-  imageUrl: string;
-  supplierName: string | null;
-  totalAmount: number | null;
-  issueDate: string | null;
-  description: string | null;
-  category: string;
-  installments: { number: number; amount: number; dueDate: string }[];
-}> {
-  // Upload PDF to S3 and send as base64 data URL to AI
-  const fileName = `invoices/email/${Date.now()}.pdf`;
-  const { url: imageUrl } = await storagePut(fileName, pdfBuffer, "application/pdf");
-  const pdfBase64 = pdfBuffer.toString("base64");
-  const pdfDataUrl = `data:application/pdf;base64,${pdfBase64}`;
-
-  const messages: Message[] = [
-    {
-      role: "system",
-      content: `Você é um assistente especializado em extrair informações de Notas Fiscais Eletrônicas (NF-e/DANFE) brasileiras.
-Analise a imagem da nota fiscal com atenção especial à seção de DUPLICATAS/COBRANÇA.
+const NF_SYSTEM_PROMPT = `Você é um assistente especializado em extrair informações de Notas Fiscais Eletrônicas (NF-e/DANFE) brasileiras.
+Analise a nota fiscal com atenção especial à seção de DUPLICATAS/COBRANÇA.
 
 Retorne um JSON com os campos:
 - supplierName: string (nome do fornecedor/empresa emissora, máximo 200 caracteres)
@@ -52,26 +34,91 @@ Retorne um JSON com os campos:
   - dueDate: string (data de vencimento no formato YYYY-MM-DD)
 
 REGRAS IMPORTANTES:
-1. SEMPRE extraia as duplicatas reais da seção DUPLICATAS/COBRANÇA se ela existir na imagem.
+1. SEMPRE extraia as duplicatas reais da seção DUPLICATAS/COBRANÇA se ela existir.
 2. NÃO invente parcelas nem calcule com base no valor total.
 3. Se não houver seção de duplicatas, retorne installments como array vazio [].
 4. Datas no formato brasileiro (DD/MM/AAAA) devem ser convertidas para YYYY-MM-DD.
 5. Valores com vírgula como separador decimal (ex: R$ 13.776,25) devem ser convertidos para decimal (13776.25).
 
-Se não conseguir extrair algum campo, retorne null para ele.`,
-    },
-    {
-      role: "user",
-      content: [
-        { type: "text", text: "Extraia as informações desta Nota Fiscal:" },
-        { type: "image_url", image_url: { url: pdfDataUrl, detail: "high" } },
-      ],
-    },
-  ];
+Se não conseguir extrair algum campo, retorne null para ele.`;
 
-  const response = await invokeLLM({ messages, response_format: { type: "json_object" } });
-  const rawContent = response.choices[0]?.message?.content ?? "{}";
-  const content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+/** Call Claude API with PDF document support */
+async function callClaudeWithPDF(apiKey: string, pdfBase64: string): Promise<string> {
+  const model = "claude-sonnet-4-6";
+  const body = {
+    model,
+    max_tokens: 4096,
+    system: NF_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+          },
+          { type: "text", text: "Extraia as informações desta Nota Fiscal e retorne apenas o JSON." },
+        ],
+      },
+    ],
+  };
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Claude API error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json() as any;
+  const text: string = data.content?.[0]?.text ?? "{}";
+  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+}
+
+/** Extract NF data from a PDF buffer using the user's configured AI */
+async function extractInvoiceDataFromPdf(pdfBuffer: Buffer, aiConfig: AIConfig): Promise<{
+  imageUrl: string;
+  supplierName: string | null;
+  totalAmount: number | null;
+  issueDate: string | null;
+  description: string | null;
+  category: string;
+  installments: { number: number; amount: number; dueDate: string }[];
+}> {
+  const fileName = `invoices/email/${Date.now()}.pdf`;
+  const { url: imageUrl } = await storagePut(fileName, pdfBuffer, "application/pdf");
+  const pdfBase64 = pdfBuffer.toString("base64");
+
+  let content: string;
+
+  if (aiConfig.provider === "claude" && aiConfig.apiKey) {
+    content = await callClaudeWithPDF(aiConfig.apiKey, pdfBase64);
+  } else {
+    // Fallback: Manus/Gemini/GPT via invokeLLM (OpenAI-compat with image_url)
+    const pdfDataUrl = `data:application/pdf;base64,${pdfBase64}`;
+    const messages: Message[] = [
+      { role: "system", content: NF_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Extraia as informações desta Nota Fiscal:" },
+          { type: "image_url", image_url: { url: pdfDataUrl, detail: "high" } },
+        ],
+      },
+    ];
+    const response = await invokeLLM({ messages, response_format: { type: "json_object" } });
+    const rawContent = response.choices[0]?.message?.content ?? "{}";
+    content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+  }
+
   let data: Record<string, unknown> = {};
   try { data = JSON.parse(content); } catch { /* ignore */ }
 
@@ -191,11 +238,14 @@ export function registerMailgunWebhook(app: Express) {
         return;
       }
 
+      // Get user's configured AI provider
+      const aiConfig = await getAISettings(foundUser.id);
+
       // Process each PDF
       for (const pdfFile of pdfFiles) {
         try {
           console.log(`[Mailgun] Processing PDF: ${pdfFile.originalname} (${pdfFile.size} bytes)`);
-          const extracted = await extractInvoiceDataFromPdf(pdfFile.buffer);
+          const extracted = await extractInvoiceDataFromPdf(pdfFile.buffer, aiConfig);
 
           await db.insert(pendingInvoices).values({
             userId: foundUser.id,
