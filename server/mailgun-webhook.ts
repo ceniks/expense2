@@ -13,6 +13,7 @@ import { storagePut } from "./storage";
 import { getDb } from "./db";
 import { pendingInvoices, users, groupMembers } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { ENV } from "./_core/env";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
@@ -109,6 +110,30 @@ async function findUserByEmail(email: string): Promise<{ id: number; groupId: nu
   return { id: rows[0].id, groupId: rows[0].groupId ?? null };
 }
 
+/** Fallback: find the owner/first user in the system */
+async function findOwnerUser(): Promise<{ id: number; groupId: number | null } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  // Try by OWNER_OPEN_ID env var first
+  if (ENV.ownerOpenId) {
+    const rows = await db
+      .select({ id: users.id, groupId: groupMembers.groupId })
+      .from(users)
+      .leftJoin(groupMembers, eq(groupMembers.userId, users.id))
+      .where(eq(users.openId, ENV.ownerOpenId))
+      .limit(1);
+    if (rows.length > 0) return { id: rows[0].id, groupId: rows[0].groupId ?? null };
+  }
+  // Fallback: first user created
+  const rows = await db
+    .select({ id: users.id, groupId: groupMembers.groupId })
+    .from(users)
+    .leftJoin(groupMembers, eq(groupMembers.userId, users.id))
+    .limit(1);
+  if (rows.length === 0) return null;
+  return { id: rows[0].id, groupId: rows[0].groupId ?? null };
+}
+
 export function registerMailgunWebhook(app: Express) {
   // Mailgun sends multipart/form-data for inbound emails
   app.post("/api/mailgun/inbound", upload.any(), async (req: Request, res: Response) => {
@@ -134,16 +159,19 @@ export function registerMailgunWebhook(app: Express) {
         console.log(`[Mailgun] Detected original sender from forwarded body: ${originalSender}`);
       }
 
-      // Find the user by their email address
+      // Find the user by their email address; fallback to owner/first user
       const foundUser =
         (await findUserByEmail(originalSender)) ??
-        (await findUserByEmail(sender));
+        (await findUserByEmail(sender)) ??
+        (await findOwnerUser());
 
       if (!foundUser) {
-        console.log(`[Mailgun] No user found for email: ${originalSender} or ${sender}`);
+        console.log(`[Mailgun] No user found for email: ${originalSender} or ${sender}, and no owner user found`);
         res.status(200).json({ ok: true, message: "User not found, ignoring" });
         return;
       }
+
+      console.log(`[Mailgun] Assigning to user ${foundUser.id} (matched by email or fallback owner)`);
 
       // Find PDF attachments
       const files = (req.files as { fieldname: string; originalname: string; mimetype: string; buffer: Buffer; size: number }[]) || [];
